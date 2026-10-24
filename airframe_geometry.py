@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from dataclasses import dataclass
+from functools import lru_cache
+from math import isfinite, sqrt
 
 from cadgen import build123d as bd
 
@@ -23,20 +25,22 @@ class AirframeParameters:
         (0.00, 1.00), (0.20, 0.99), (0.42, 0.90), (0.64, 0.69),
         (0.82, 0.39), (0.95, 0.13), (1.00, 0.06),
     )
-    wing_span: float = 240.0
     wing_root_chord: float = 60.0
     wing_tip_chord: float = 35.0
     wing_airfoil: str = "SD7003"
     wing_trailing_edge: float = 0.30
-    support_span: float = 170.0
     support_chord: float = 38.0
     support_airfoil: str = "SD8020"
     support_trailing_edge: float = 0.30
     motor_station_x: float = 0.0
     horizontal_motor_offset: float = 100.0
     vertical_motor_offset: float = 85.0
+    propeller_diameter: float = 76.2
+    propeller_envelope_thickness: float = 1.0
+    propeller_clearance_margin: float = 1.0
     motor_pod_length: float = 42.0
     motor_pod_diameter: float = 24.0
+    arm_pod_overlap: float = 1.0
     motor_body_diameter: float = 19.9
     motor_body_length: float = 13.5
     motor_body_radius_profile: tuple[tuple[float, float], ...] = (
@@ -52,6 +56,117 @@ class AirframeParameters:
         (0.12, 1.00), (0.26, 1.00), (0.38, 0.96), (0.43, 0.83),
         (0.46, 0.58), (0.49, 0.16), (0.50, 0.05),
     )
+
+    @property
+    def wing_span(self) -> float:
+        return 2 * (
+            self.horizontal_motor_offset
+            - self.motor_pod_diameter / 2
+            + self.arm_pod_overlap
+        )
+
+    @property
+    def support_span(self) -> float:
+        return 2 * (
+            self.vertical_motor_offset
+            - self.motor_pod_diameter / 2
+            + self.arm_pod_overlap
+        )
+
+    @property
+    def wing_planform_area(self) -> float:
+        """Gross trapezoidal planform area in mm², assuming linear loft taper."""
+        return self.wing_span * (self.wing_root_chord + self.wing_tip_chord) / 2
+
+    @property
+    def support_planform_area(self) -> float:
+        """Gross rectangular support planform area in mm²."""
+        return self.support_span * self.support_chord
+
+    def validate_arm_pod_fit(self):
+        pod_radius = self.motor_pod_diameter / 2
+        if pod_radius <= 0:
+            raise ValueError("Motor-pod diameter must be positive")
+        if not 0 < self.arm_pod_overlap < pod_radius:
+            raise ValueError("Arm-to-pod overlap must be positive and less than the pod radius")
+        if self.wing_span <= 0 or self.support_span <= 0:
+            raise ValueError("Motor offsets must leave positive arm spans inside the pods")
+
+    @property
+    def propeller_clearance_report(self) -> dict[str, float]:
+        """Conservative clearances from swept disks to modeled airframe features."""
+        disk_radius = self.propeller_diameter / 2
+        disk_x_min = self.prop_hub_center_x - self.propeller_envelope_thickness / 2
+        nearest_x = max(0.0, abs(self.prop_hub_center_x) - self.propeller_envelope_thickness / 2)
+
+        wing_root_half_chord = self.wing_root_chord / 2
+        wing_tip_half_chord = self.wing_tip_chord / 2
+        if nearest_x >= wing_root_half_chord:
+            horizontal_wing_clearance = nearest_x - wing_root_half_chord
+        else:
+            if wing_tip_half_chord >= nearest_x:
+                wing_span_at_disk_x = self.wing_span / 2
+            else:
+                chord_fraction = (wing_root_half_chord - nearest_x) / (
+                    wing_root_half_chord - wing_tip_half_chord
+                )
+                wing_span_at_disk_x = self.wing_span / 2 * chord_fraction
+            radial_gap = max(0.0, self.horizontal_motor_offset - wing_span_at_disk_x)
+            horizontal_wing_clearance = radial_gap - disk_radius
+
+        support_x_gap = nearest_x - self.support_chord / 2
+        if support_x_gap > 0:
+            vertical_support_clearance = support_x_gap
+        else:
+            support_radial_gap = max(
+                0.0, self.vertical_motor_offset - self.support_span / 2
+            )
+            vertical_support_clearance = support_radial_gap - disk_radius
+
+        propeller_stations = (
+            (-self.horizontal_motor_offset, 0.0),
+            (self.horizontal_motor_offset, 0.0),
+            (0.0, -self.vertical_motor_offset),
+            (0.0, self.vertical_motor_offset),
+        )
+        neighbor_spacing = min(
+            sqrt((y0 - y1) ** 2 + (z0 - z1) ** 2)
+            for index, (y0, z0) in enumerate(propeller_stations)
+            for y1, z1 in propeller_stations[index + 1:]
+        )
+        return {
+            "pod_noses": disk_x_min - self.pod_nose_x,
+            "horizontal_wing": horizontal_wing_clearance,
+            "vertical_support": vertical_support_clearance,
+            "fuselage": min(
+                self.horizontal_motor_offset,
+                self.vertical_motor_offset,
+            ) - self.fuselage_max_radius - disk_radius,
+            "neighboring_propellers": neighbor_spacing - self.propeller_diameter,
+        }
+
+    def validate_propeller_clearance(self):
+        if self.propeller_diameter <= 0 or self.propeller_envelope_thickness <= 0:
+            raise ValueError("Propeller diameter and envelope thickness must be positive")
+        if self.propeller_clearance_margin < 0:
+            raise ValueError("Propeller clearance margin must be nonnegative")
+        if self.wing_root_chord <= self.wing_tip_chord:
+            raise ValueError("Horizontal wing root chord must exceed its tip chord")
+        clearances = self.propeller_clearance_report
+        inadequate = {
+            feature: clearance
+            for feature, clearance in clearances.items()
+            if clearance < self.propeller_clearance_margin
+        }
+        if inadequate:
+            detail = ", ".join(
+                f"{feature}={clearance:.2f} mm"
+                for feature, clearance in inadequate.items()
+            )
+            raise ValueError(
+                f"Propeller clearance is below the {self.propeller_clearance_margin:.2f} mm "
+                f"minimum: {detail}"
+            )
 
     @property
     def motor_mount_face_x(self) -> float:
@@ -92,10 +207,13 @@ class AirframeParameters:
             raise ValueError("The motor body must fit within the motor-pod axial envelope")
         if self.motor_body_diameter > self.motor_pod_diameter:
             raise ValueError("The motor body diameter exceeds the motor-pod outside diameter")
-        pod_radius_profile = [
+        pod_stations = tuple(
             (fraction * self.motor_pod_length, ratio * self.motor_pod_diameter / 2)
             for fraction, ratio in self.motor_pod_radius_profile
-        ]
+        )
+        # Sample the same interpolating spline used by _motor_pod, rather than
+        # validating a piecewise-linear approximation of its control stations.
+        pod_radius_profile = _sample_spline_radius_profile(pod_stations)
         motor_sample_xs = set()
         for (x0, _), (x1, _) in zip(
             self.motor_body_radius_profile,
@@ -108,7 +226,7 @@ class AirframeParameters:
             pod_x = self.motor_mount_face_offset_from_pod_center + motor_x
             pod_radius = _interpolate(pod_radius_profile, pod_x)
             motor_radius = _interpolate(self.motor_body_radius_profile, motor_x)
-            if pod_radius < motor_radius + self.motor_pod_radial_allowance - 1e-8:
+            if pod_radius < motor_radius + self.motor_pod_radial_allowance - 0.01:
                 raise ValueError(
                     "The motor-pod profile does not leave the required radial allowance "
                     f"at X={pod_x:.3f} mm"
@@ -139,6 +257,23 @@ def _one_solid(shape, label: str):
     return solid
 
 
+@lru_cache(maxsize=16)
+def _sample_spline_radius_profile(
+    stations: tuple[tuple[float, float], ...],
+    sample_count: int = 2048,
+) -> tuple[tuple[float, float], ...]:
+    edge = _radius_profile_edge(stations)
+    points = edge.positions([index / sample_count for index in range(sample_count + 1)])
+    profile = tuple((float(point.X), float(point.Y)) for point in points)
+    if any(x0 >= x1 for (x0, _), (x1, _) in zip(profile, profile[1:])):
+        raise ValueError("Generated radius spline must progress monotonically along X")
+    return profile
+
+
+def _radius_profile_edge(stations):
+    return bd.Edge.make_spline([(x, radius, 0) for x, radius in stations])
+
+
 def _revolve_radius_profile(stations, label: str):
     if len(stations) < 4:
         raise ValueError(f"{label} needs at least four radius stations")
@@ -147,8 +282,7 @@ def _revolve_radius_profile(stations, label: str):
     if min(radius for _, radius in stations) <= 0:
         raise ValueError(f"{label} must use finite-radius end caps, not cusps")
 
-    outer_points = [(x, radius, 0) for x, radius in stations]
-    outer_edge = bd.Edge.make_spline(outer_points)
+    outer_edge = _radius_profile_edge(stations)
     aft_x, aft_radius = stations[0]
     nose_x, nose_radius = stations[-1]
     nose_cap = bd.Edge.make_line((nose_x, nose_radius, 0), (nose_x, 0, 0))
@@ -190,34 +324,47 @@ def _motor_pod(params: AirframeParameters):
 
 
 def _split_airfoil(coordinates):
-    points = []
+    raw_points = []
     for x, y in coordinates:
-        point = (min(1.0, max(0.0, float(x))), float(y))
-        if not points or abs(point[0] - points[-1][0]) + abs(point[1] - points[-1][1]) > 1e-12:
-            points.append(point)
+        point = (float(x), float(y))
+        if not all(isfinite(value) for value in point):
+            raise ValueError("Airfoil coordinates must be finite numbers")
+        if point[0] < -1e-3 or point[0] > 1.0 + 1e-3:
+            raise ValueError("Airfoil chord coordinates must lie between 0 and 1")
+        if not raw_points or abs(point[0] - raw_points[-1][0]) + abs(point[1] - raw_points[-1][1]) > 1e-12:
+            raw_points.append(point)
 
-    for i in range(1, len(points)):
-        x0, y0 = points[i - 1]
-        x1, y1 = points[i]
+    if len(raw_points) < 4:
+        raise ValueError("Airfoil data must contain at least four distinct points")
+    for i in range(1, len(raw_points)):
+        x0, y0 = raw_points[i - 1]
+        x1, y1 = raw_points[i]
         if y0 > 0 and y1 <= 0:
             if abs(y1) < 1e-14:
                 nose = (x1, 0.0)
-                upper = points[:i] + [nose]
-                lower = [nose] + points[i + 1:]
+                upper = raw_points[:i] + [nose]
+                lower = [nose] + raw_points[i + 1:]
             else:
                 fraction = y0 / (y0 - y1)
                 nose = (x0 + fraction * (x1 - x0), 0.0)
-                upper = points[:i] + [nose]
+                upper = raw_points[:i] + [nose]
                 # The crossing segment's second point has already passed the
                 # leading edge in source traversal order; retaining it here
                 # makes the lower branch non-monotonic after sorting.
-                lower = [nose] + points[i + 1:]
+                lower = [nose] + raw_points[i + 1:]
             break
     else:
         raise ValueError("Airfoil data must run from upper trailing edge through the nose")
 
     upper = sorted(upper, key=lambda point: point[0])
     lower = sorted(lower, key=lambda point: point[0])
+    x_min = min(upper[0][0], lower[0][0])
+    x_max = max(upper[-1][0], lower[-1][0])
+    if x_max - x_min <= 1e-12:
+        raise ValueError("Airfoil coordinates must cover a nonzero chord")
+    chord = x_max - x_min
+    upper = [((x - x_min) / chord, y) for x, y in upper]
+    lower = [((x - x_min) / chord, y) for x, y in lower]
     return upper, lower
 
 
@@ -316,7 +463,7 @@ def _loft_surface(sections, airfoil: str, trailing_edge: float, plane: str, labe
         bd.Pos(*position) * _airfoil_face(airfoil, chord, trailing_edge, plane)
         for position, chord in sections
     ]
-    lofted = bd.loft(sections=faces, ruled=False, clean=True)
+    lofted = bd.loft(sections=faces, ruled=True, clean=True)
     return _one_solid(lofted, label)
 
 
@@ -352,6 +499,8 @@ def _vertical_support(params: AirframeParameters):
 
 def build_components(params: AirframeParameters = PARAMETERS):
     params.validate_motor_prop_interface()
+    params.validate_arm_pod_fit()
+    params.validate_propeller_clearance()
     fuselage = _fuselage(params)
     wing = _wing(params)
     support = _vertical_support(params)
@@ -376,7 +525,7 @@ def build_airframe_oml(params: AirframeParameters = PARAMETERS):
     components = build_components(params)
     with bd.BuildPart() as airframe:
         for component in components:
-            bd.add(component)
+            bd.insert(component)
     solid = _one_solid(airframe.part, "cruciform_tailsitter_oml")
     solid.label = "cruciform_tailsitter_oml"
     return solid

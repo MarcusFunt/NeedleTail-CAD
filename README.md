@@ -28,12 +28,24 @@ an adjustable aft taper. The forebody radius now carries the XING2 1404 motor
 case envelope to the motor-bell nose, with a 1.5 mm radial allowance around
 the approximate motor profile before tapering to the propeller hub. This is
 outer-envelope allowance; it does not model pod wall thickness or an internal
-cavity. The compact layout uses a 240 mm horizontal wing and a 170 mm vertical
-support, reduced from 260 mm and 190 mm. Motor stations are `(0, ±100, 0)` and
-`(0, 0, ±85)`, 10 mm closer to the center on each arm. Their nearest nominal
-76.2 mm propeller disks have 55.0 mm edge clearance. The span changes reduce
-planform area by about 7.7% for the horizontal wing and 10.5% for the vertical
-support.
+cavity. The compact layout uses a 178 mm horizontal wing and a 148 mm vertical
+support, reduced from 260 mm and 190 mm. Both arm tips stop at the pods' inner
+radial envelope with a 1 mm overlap for a robust fused OML: the tip stations are
+`(0, ±89, 0)` and `(0, 0, ±74)`, while pod centers remain at
+`(0, ±100, 0)` and `(0, 0, ±85)`. The arms therefore do not continue through the
+pods to their centerlines or outboard sides. Span is derived from motor
+stations, pod diameter, and overlap, so changing a motor offset also updates
+the matching arm tip. The lifting surfaces use ruled lofts for a linear
+spanwise taper. Their gross planform areas are 8,455 mm² for the horizontal
+wing and 5,624 mm² for the vertical support; these exclude fuselage overlap and
+are not aerodynamic effective-area estimates. Relative to 260 mm and 190 mm
+baseline spans, the changes reduce planform area by 31.5% and 22.1%.
+
+The 76.2 mm swept-disk envelope is tied to the shared airframe parameters and
+checked against pod noses, both lifting surfaces, the fuselage, and adjacent
+disks. Current modeled clearances are 1.5 mm to the pod noses, 8.5 mm to the
+horizontal wing, and 3.5 mm to the vertical support; adjacent disks have
+55.0 mm edge clearance. The minimum permitted modeled clearance is 1.0 mm.
 
 ## Motor and propeller interface
 
@@ -48,8 +60,10 @@ into the hub. The shaft extension remains an unverified packaging assumption.
 centerline, 2 mm ahead of the pod nose. `motor_prop_installation.py` keeps the
 motor and propeller as separate solids in a `Compound`, and rotates their local
 +Z shaft axis onto aircraft +X. This preserves the hub bore and shaft
-clearance for inspection. The selected reference STEP files and their limits
-are documented in `references/propeller-kit/README.md`.
+clearance for inspection. The pod-fit validator samples the same spline used
+to generate the pod, and the profile coordinates are normalized at their
+interpolated leading edge instead of being clipped. The selected reference
+STEP files and their limits are documented in `references/propeller-kit/README.md`.
 
 Elevons, propeller blades, internal structure, openings, and manufacturing
 features are excluded. Pod X station and the control-surface design remain
@@ -69,20 +83,70 @@ manufacturing definition.
 
 ## Build and inspect
 
-From this directory, run:
+The repository pins Python 3.13.5 in `.python-version`, uv 0.11.21 in CI,
+build123d 0.12.0, cadgen 0.7.26, and the full transitive Python dependency
+set in `uv.lock`. Gmsh 4.15.2 is also locked as the optional `cfd-meshing`
+extra for the CFD phase. Install uv 0.11.21, then from this directory run:
 
 ```powershell
-python .\airframe_oml.py --force
-python .\airframe.py --force
-python .\propeller_envelope.py --force
-python .\motor_prop_installation.py --force
-cadgen step inspect refs .\airframe_oml.step --facts --planes --positioning
-cadgen step inspect validate .\airframe_oml.step
-cadgen step inspect refs .\airframe.step --facts --planes --positioning
-cadgen step inspect validate .\airframe.step
+uv sync --locked
+uv run --locked python .\airframe_oml.py --force
+uv run --locked python .\airframe.py --force
+uv run --locked python .\propeller_envelope.py --force
+uv run --locked python .\motor_prop_installation.py --force
+uv run --locked python -m unittest discover --verbose
 ```
 
-This workspace currently reports cadgen 0.6.3, Python 3.13.5, and build123d
-0.11.1. The companion CFD plan specifies build123d 0.12.0; regenerate the STEP
-under that pinned environment before treating it as the controlled CFD
-baseline.
+GitHub Actions runs these four builds, the geometry regression tests, and
+STEP re-import and solid-validity checks on pushes and pull requests. The
+build123d 0.12.0 target currently requires an explicit uv override because
+cadgen 0.7.26's package metadata caps build123d below 0.12; the locked CI
+environment exercises that combination directly.
+
+## Airfoil polars
+
+Install AeroSandbox and NeuralFoil into the project environment with:
+
+```powershell
+uv sync --locked --extra aero
+```
+
+XFOIL is a separate executable. Download the Windows build from the
+[official XFOIL page](https://web.mit.edu/drela/Public/web/xfoil/) and place
+`xfoil.exe` at `.venv\Scripts\xfoil.exe`. Generate geometry-matched SD7003
+and SD8020 section polars and compare selected points with XFOIL using:
+
+```powershell
+uv run --locked --extra aero python .\airfoil_polars.py --xfoil .\.venv\Scripts\xfoil.exe
+```
+
+Results are written under `tmp\airfoil-polars\`. Set flight-speed and altitude
+conditions before using the exploratory Reynolds-number sweep as an operating
+envelope.
+
+## Whole-aircraft aerodynamic trends
+
+Build an AeroSandbox model from the shared airframe parameters and compare
+attached-flow VLM trends with empirical AeroBuildup trends:
+
+```powershell
+uv run --locked --extra aero python .\whole_aircraft_aero.py
+```
+
+The model includes the CAD-matched SD7003 wing, SD8020 vertical support, the
+central fuselage, and four motor pods. The airfoil sections preserve the
+project's 0.30 mm trailing-edge closure, and the fuselage and pod bodies follow
+the CAD profile splines. It uses sea-level conditions at 10, 15, and 20 m/s to
+show the sensitivity of AeroBuildup to the low section Reynolds numbers. The
+horizontal wing sets the coefficient reference area; moments are referenced to
+the geometry origin because mass properties and center of gravity are not yet
+defined.
+
+Outputs are written under `tmp\whole-aircraft-aero\`: a reloadable `.asb`
+aircraft object, coefficient sweeps, model/assumption metadata, a trend plot,
+and both three-view and shaded 3D geometry renders. VLM is inviscid and assumes
+attached flow. AeroBuildup uses empirical component models and NeuralFoil
+section data. Treat both as conceptual estimates at this scale, where
+transition, surface finish, propeller effects, and the actual center of gravity
+can matter substantially. Propeller blades, thrust, and powered propwash are
+not included.

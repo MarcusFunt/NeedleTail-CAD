@@ -3,5 +3,6 @@
 
 # Local reviews and Python bytecode.
 /tmp/
+.venv/
 __pycache__/
 *.py[cod]

@@ -1,0 +1,23 @@
+[project]
+name = "needletail-airframe"
+version = "0.1.0"
+description = "Parametric first-pass CAD for the NeedleTail tailsitter airframe"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "build123d==0.12.0",
+    "cadgen==0.7.26",
+]
+
+[project.optional-dependencies]
+aero = [
+    "aerosandbox==4.2.10",
+    "neuralfoil==0.3.3",
+]
+cfd-meshing = ["gmsh==4.15.2"]
+
+[tool.uv]
+package = false
+# cadgen 0.7.26 declares build123d <0.12. This project intentionally tests
+# against the plan's 0.12.0 target; CI verifies this override on every build.
+override-dependencies = ["build123d==0.12.0"]
