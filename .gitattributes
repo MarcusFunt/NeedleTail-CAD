@@ -1,0 +1,2 @@
+# Imported supplier/reference geometry is source data, tracked with Git LFS.
+references/propeller-kit/STEP/*.step filter=lfs diff=lfs merge=lfs -text

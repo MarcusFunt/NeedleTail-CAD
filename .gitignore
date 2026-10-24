@@ -1,0 +1,7 @@
+# Generated CAD exports are reproducible from the model scripts.
+/*.step
+
+# Local reviews and Python bytecode.
+/tmp/
+__pycache__/
+*.py[cod]
