@@ -52,8 +52,12 @@ def evaluate(
                     airplane=airplane, op_point=op, model_size="large",
                 ).run()
                 q = 0.5 * rho * speed ** 2
-                cl = float(coefficients["CL"])
-                cd = float(coefficients["CD"])
+                cl_values = np.asarray(coefficients["CL"], dtype=float)
+                cd_values = np.asarray(coefficients["CD"], dtype=float)
+                if cl_values.size != 1 or cd_values.size != 1:
+                    raise ValueError(f"Expected scalar coefficients: CL shape {cl_values.shape}, CD shape {cd_values.shape}")
+                cl = float(cl_values.reshape(-1)[0])
+                cd = float(cd_values.reshape(-1)[0])
                 if not (np.isfinite(cl) and np.isfinite(cd) and cd > 0):
                     raise ValueError(
                         f"Nonfinite/nonpositive AeroBuildup result: {variant}, "

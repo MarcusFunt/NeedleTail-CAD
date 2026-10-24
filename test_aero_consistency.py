@@ -66,7 +66,8 @@ class AircraftGeometryConsistency(unittest.TestCase):
                     np.array((-(x_mm + center_x_mm)/1000, y_mm/1000, z_mm/1000)),
                     atol=1e-9, rtol=0,
                 )
-                self.assertAlmostEqual(xsec.radius, r_mm / 1000, delta=1e-9)
+                self.assertAlmostEqual(xsec.width, r_mm / 1000, delta=1e-9)
+                self.assertAlmostEqual(xsec.height, r_mm / 1000, delta=1e-9)
 
     def test_variant_override_changes_only_lifting_spans(self):
         old = build_airplane(wing_span_mm=240.0, support_span_mm=170.0)
@@ -97,10 +98,12 @@ class AeroSmokeTests(unittest.TestCase):
             with self.subTest(solver=type(solver).__name__):
                 result = solver.run()
                 for key in ("CL", "CD", "CY", "Cl", "Cm", "Cn"):
-                    value = float(result[key])
+                    values = np.asarray(result[key], dtype=float)
+                    self.assertEqual(values.size, 1, (key, values.shape))
+                    value = float(values.reshape(-1)[0])
                     self.assertTrue(math.isfinite(value), (key, value))
                     self.assertLess(abs(value), 10.0, (key, value))
-                self.assertGreaterEqual(float(result["CD"]), -1e-4)
+                self.assertGreaterEqual(float(np.asarray(result["CD"]).reshape(-1)[0]), -1e-4)
 
 if __name__ == "__main__":
     unittest.main()
