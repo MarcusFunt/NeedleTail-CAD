@@ -64,3 +64,12 @@ jobs:
         run: uv sync --locked --extra aero
       - name: Run independent CAD / aero consistency and physics smoke tests
         run: uv run --locked --extra aero python -m unittest test_aero_consistency -v
+      - name: Generate controlled historic-versus-current aerodynamic comparison
+        run: uv run --locked --extra aero python compare_airframe_variants.py
+      - name: Upload comparison data
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: needle-tail-variant-comparison
+          path: tmp/airframe-comparison/
+          if-no-files-found: warn
