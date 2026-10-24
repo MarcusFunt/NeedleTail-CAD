@@ -124,8 +124,25 @@ def _make_fuselage(
     )
 
 
-def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
-    """Build an AeroSandbox model from the shared CAD parameters."""
+def build_airplane(
+    params: AirframeParameters = PARAMETERS,
+    *,
+    wing_span_mm: float | None = None,
+    support_span_mm: float | None = None,
+) -> asb.Airplane:
+    """Build the AeroSandbox proxy; optional spans enable historic A/B sweeps.
+
+    Overrides affect lifting-surface spans only. They do not move the motors,
+    fuselage, pods, or change the airfoil/source-parameter definitions.
+    """
+    if wing_span_mm is None:
+        wing_span_mm = params.wing_span
+    if support_span_mm is None:
+        support_span_mm = params.support_span
+    if not (np.isfinite(wing_span_mm) and np.isfinite(support_span_mm)):
+        raise ValueError("Span overrides must be finite")
+    if wing_span_mm <= 0 or support_span_mm <= 0:
+        raise ValueError("Span overrides must be positive")
     wing_root_airfoil = _airfoil_for_section(
         "wing_root", params.wing_airfoil, params.wing_root_chord, params.wing_trailing_edge
     )
@@ -142,8 +159,8 @@ def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
         support_section, f"vertical_support_{params.support_airfoil}_CAD_TE_oriented"
     )
 
-    half_wing_span_m = params.wing_span / 2000
-    half_support_span_m = params.support_span / 2000
+    half_wing_span_m = wing_span_mm / 2000
+    half_support_span_m = support_span_mm / 2000
     wing_root_chord_m = params.wing_root_chord / 1000
     wing_tip_chord_m = params.wing_tip_chord / 1000
     support_chord_m = params.support_chord / 1000
@@ -208,7 +225,7 @@ def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
     # The horizontal wing is the reference surface for coefficients. The CG
     # is left at the shared geometry origin because no mass properties are in
     # the parameter set; moments are therefore geometry-origin moments.
-    horizontal_area_m2 = params.wing_planform_area / 1_000_000
+    horizontal_area_m2 = wing_span_mm * (params.wing_root_chord + params.wing_tip_chord) / 2 / 1_000_000
     taper = params.wing_tip_chord / params.wing_root_chord
     mean_aerodynamic_chord_m = (
         2
@@ -224,7 +241,7 @@ def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
         fuselages=fuselages,
         s_ref=horizontal_area_m2,
         c_ref=mean_aerodynamic_chord_m,
-        b_ref=params.wing_span / 1000,
+        b_ref=wing_span_mm / 1000,
     )
 
 

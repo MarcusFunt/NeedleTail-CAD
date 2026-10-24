@@ -150,3 +150,60 @@ section data. Treat both as conceptual estimates at this scale, where
 transition, surface finish, propeller effects, and the actual center of gravity
 can matter substantially. Propeller blades, thrust, and powered propwash are
 not included.
+
+## CAD-clearance validation and controlled baseline comparison
+
+All propeller-envelope clearances are now measured as true 3D minimum distances
+between build123d/OCCT solids. The report measures the 1 mm-thick swept-disk
+**envelope** against wing, vertical support, fuselage, and own motor pod solids,
+plus the other swept disks. Zero distance means contact or intersection.
+A nominal 1 mm clearance remains a geometry-only criterion; rotor blade flex,
+mount tolerance, bearing play and vibration require a larger engineering margin.
+The report is cached per immutable AirframeParameters instance.
+
+The `aero` CI job imports AeroSandbox and NeuralFoil, tests the shared section
+contours, component dimensions, 3D coordinate mapping, physical clearance
+invariants and finite low-Re aerodynamic outputs. It also runs:
+
+```powershell
+uv run --locked --extra aero python .\compare_airframe_variants.py
+```
+
+This writes `tmp/airframe-comparison/variant_comparison.csv`, metadata and
+force/drag comparison plots. The historic *24 Oct pre-change* proxy restores
+**240 mm horizontal** and **170 mm vertical** lifting spans, with the same
+motor stations, pod/fuselage profiles, airfoil definitions and analytic model
+as the compact 178/148 mm variant. It is a **controlled aerodynamic surrogate
+comparison, not byte-identical execution of the former build123d STEP file**:
+the former CAD used a smooth loft and historical normalization of SD7003.
+Reported coefficients use each wing's reference area, so cross-variant
+comparisons should emphasize dimensional lift and drag (N), and compute flight
+trim/power once mass and propeller data are available. The first-pass models
+are unpowered and exclude propeller slipstream and junction interference.
+Results require eventual verification against mesh-converged, transitional
+viscous CFD (e.g. SU2) on each revision's exact STEP surface.
+
+The GitHub Actions CAD job independently regenerates all four STEP files under
+the locked `build123d==0.12.0` / `cadgen==0.7.26` override environment,
+then tests their solid counts and reimport validity. Until a successful run,
+the metadata override must be regarded as provisionally supported.
+
+## Exact previous-versus-compact native STEP comparison
+
+CI additionally checks out historical commit `3ea08b2` into a detached worktree,
+rebuilds its unfused assembly-independent OML STEP using **the same current
+locked Python/build123d/cadgen environment**, and compares that imported solid
+against current `airframe_oml.step`. Run locally with the two STEP paths:
+
+```powershell
+uv run --locked python .\compare_step_geometries.py --old-step .\old_airframe_oml.step --new-step .\airframe_oml.step
+```
+
+The job uploads both validated OML STEP files, surface/volume and envelope
+statistics, and the numeric comparison report. Unlike the AeroSandbox comparison
+these are **actual old and new BREP solids**; the comparison is purely geometric,
+not a higher-fidelity drag calculation. Meaningful viscous-CFD evaluation still
+requires matched Gmsh meshing, consistent reference quantities and farfield,
+grid-convergence sweeps, and appropriate low-Reynolds transitional-flow
+validation. Do not infer improved cruise performance from volume or surface
+area alone.

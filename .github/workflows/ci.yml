@@ -2,6 +2,7 @@ name: CAD validation
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -20,6 +21,15 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Verify reference STEP content is hydrated from LFS
+        run: |
+          git lfs ls-files
+          grep -q 'ISO-10303-21' references/propeller-kit/STEP/iFlight_XING2_1404_4600KV_REFERENCE.step
+          grep -q 'ISO-10303-21' references/propeller-kit/STEP/PROP_3x4_2B_CW.step
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -27,7 +37,7 @@ jobs:
           python-version-file: .python-version
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.11.21"
           enable-cache: true
@@ -44,4 +54,59 @@ jobs:
           uv run --locked python motor_prop_installation.py --force
 
       - name: Run geometry and STEP validation tests
-        run: uv run --locked python -m unittest discover --verbose
+        run: uv run --locked python -m unittest test_airframe_geometry -v
+      - name: Report exact propeller-envelope clearance measurements
+        run: uv run --locked python -c "from airframe_geometry import PARAMETERS; print('CAD_CLEARANCES_MM', PARAMETERS.propeller_clearance_report)"
+      - name: Generate historical STEP under the same locked Python environment
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/needletail-previous" 3ea08b234742622e8806827458b4608dd3ce8321
+          (cd "$RUNNER_TEMP/needletail-previous" && "$GITHUB_WORKSPACE/.venv/bin/python" airframe_oml.py --force)
+      - name: Compare historical and compact native STEP solids
+        run: |
+          uv run --locked python compare_step_geometries.py \
+            --old-step "$RUNNER_TEMP/needletail-previous/airframe_oml.step" \
+            --new-step airframe_oml.step
+      - name: Upload STEP comparison with two actual solids
+        uses: actions/upload-artifact@v4
+        with:
+          name: needle-tail-native-step-comparison
+          path: tmp/native-geometry-comparison/
+          if-no-files-found: error
+      - name: Upload validated STEP exports
+        uses: actions/upload-artifact@v4
+        with:
+          name: needle-tail-step-exports
+          path: |
+            airframe_oml.step
+            airframe.step
+            propeller_envelope.step
+            motor_prop_installation.step
+          if-no-files-found: error
+
+  aerodynamics:
+    name: AeroSandbox / NeuralFoil checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install aero extra with locked environment
+        run: uv sync --locked --extra aero
+      - name: Run independent CAD / aero consistency and physics smoke tests
+        run: uv run --locked --extra aero python -m unittest test_aero_consistency -v
+      - name: Generate controlled historic-versus-current aerodynamic comparison
+        run: uv run --locked --extra aero python compare_airframe_variants.py
+      - name: Upload comparison data
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: needle-tail-variant-comparison
+          path: tmp/airframe-comparison/
+          if-no-files-found: warn

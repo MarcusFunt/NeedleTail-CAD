@@ -94,56 +94,12 @@ class AirframeParameters:
 
     @property
     def propeller_clearance_report(self) -> dict[str, float]:
-        """Conservative clearances from swept disks to modeled airframe features."""
-        disk_radius = self.propeller_diameter / 2
-        disk_x_min = self.prop_hub_center_x - self.propeller_envelope_thickness / 2
-        nearest_x = max(0.0, abs(self.prop_hub_center_x) - self.propeller_envelope_thickness / 2)
+        """OCCT minimum distances (mm) between the true CAD swept disks and solids.
 
-        wing_root_half_chord = self.wing_root_chord / 2
-        wing_tip_half_chord = self.wing_tip_chord / 2
-        if nearest_x >= wing_root_half_chord:
-            horizontal_wing_clearance = nearest_x - wing_root_half_chord
-        else:
-            if wing_tip_half_chord >= nearest_x:
-                wing_span_at_disk_x = self.wing_span / 2
-            else:
-                chord_fraction = (wing_root_half_chord - nearest_x) / (
-                    wing_root_half_chord - wing_tip_half_chord
-                )
-                wing_span_at_disk_x = self.wing_span / 2 * chord_fraction
-            radial_gap = max(0.0, self.horizontal_motor_offset - wing_span_at_disk_x)
-            horizontal_wing_clearance = radial_gap - disk_radius
-
-        support_x_gap = nearest_x - self.support_chord / 2
-        if support_x_gap > 0:
-            vertical_support_clearance = support_x_gap
-        else:
-            support_radial_gap = max(
-                0.0, self.vertical_motor_offset - self.support_span / 2
-            )
-            vertical_support_clearance = support_radial_gap - disk_radius
-
-        propeller_stations = (
-            (-self.horizontal_motor_offset, 0.0),
-            (self.horizontal_motor_offset, 0.0),
-            (0.0, -self.vertical_motor_offset),
-            (0.0, self.vertical_motor_offset),
-        )
-        neighbor_spacing = min(
-            sqrt((y0 - y1) ** 2 + (z0 - z1) ** 2)
-            for index, (y0, z0) in enumerate(propeller_stations)
-            for y1, z1 in propeller_stations[index + 1:]
-        )
-        return {
-            "pod_noses": disk_x_min - self.pod_nose_x,
-            "horizontal_wing": horizontal_wing_clearance,
-            "vertical_support": vertical_support_clearance,
-            "fuselage": min(
-                self.horizontal_motor_offset,
-                self.vertical_motor_offset,
-            ) - self.fuselage_max_radius - disk_radius,
-            "neighboring_propellers": neighbor_spacing - self.propeller_diameter,
-        }
+        A zero value denotes touch or penetration. For nominal CAD geometry
+        this is a geometric clearance, not a flight-ready safety allowance.
+        """
+        return dict(_cached_exact_propeller_clearances(self))
 
     def validate_propeller_clearance(self):
         if self.propeller_diameter <= 0 or self.propeller_envelope_thickness <= 0:
@@ -529,3 +485,51 @@ def build_airframe_oml(params: AirframeParameters = PARAMETERS):
     solid = _one_solid(airframe.part, "cruciform_tailsitter_oml")
     solid.label = "cruciform_tailsitter_oml"
     return solid
+
+
+@lru_cache(maxsize=64)
+def _cached_exact_propeller_clearances(params: AirframeParameters) -> tuple[tuple[str, float], ...]:
+    """Measure 3D solid-to-solid separation instead of planar projections.
+
+    Keep this separate from build_components/build_propeller_envelopes to avoid
+    circular validation. AirframeParameters is immutable and safely cacheable.
+    """
+    fuselage = _fuselage(params)
+    horizontal_wing = _wing(params)
+    vertical_support = _vertical_support(params)
+    pod = _motor_pod(params)
+    pod_centers = (
+        (params.motor_station_x, -params.horizontal_motor_offset, 0),
+        (params.motor_station_x, params.horizontal_motor_offset, 0),
+        (params.motor_station_x, 0, -params.vertical_motor_offset),
+        (params.motor_station_x, 0, params.vertical_motor_offset),
+    )
+    pods = [bd.Pos(*center) * pod for center in pod_centers]
+    x = params.prop_hub_center_x
+    disks = [
+        bd.Pos(x, y, z)
+        * bd.Rot(0, 90, 0)
+        * bd.Cylinder(
+            radius=params.propeller_diameter / 2,
+            height=params.propeller_envelope_thickness,
+        )
+        for _, y, z in pod_centers
+    ]
+    def closest(shape):
+        return min(float(disk.distance_to(shape)) for disk in disks)
+
+    result = {
+        "pod_noses": min(disk.distance_to(pod_shape)
+                         for disk, pod_shape in zip(disks, pods)),
+        "horizontal_wing": closest(horizontal_wing),
+        "vertical_support": closest(vertical_support),
+        "fuselage": closest(fuselage),
+        "neighboring_propellers": min(
+            disks[i].distance_to(disks[j])
+            for i in range(len(disks))
+            for j in range(i + 1, len(disks))
+        ),
+    }
+    if any(not isfinite(float(value)) or value < 0 for value in result.values()):
+        raise ValueError("CAD propeller-distance calculation was not finite/nonnegative")
+    return tuple((key, float(value)) for key, value in result.items())
