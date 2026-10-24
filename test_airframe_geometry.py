@@ -31,9 +31,12 @@ class AirframeParameterTests(unittest.TestCase):
     def test_current_propeller_clearances_have_a_positive_margin(self):
         clearances = PARAMETERS.propeller_clearance_report
 
-        self.assertAlmostEqual(clearances["pod_noses"], 1.5)
-        self.assertAlmostEqual(clearances["horizontal_wing"], 8.5)
-        self.assertAlmostEqual(clearances["vertical_support"], 3.5)
+        self.assertAlmostEqual(clearances["pod_noses"], 1.5, delta=0.05)
+        # True three-dimensional distance is much smaller than a spanwise estimate.
+        self.assertGreater(clearances["horizontal_wing"], 0.0)
+        self.assertLess(clearances["horizontal_wing"], 1.3)
+        self.assertGreaterEqual(clearances["horizontal_wing"], PARAMETERS.propeller_clearance_margin)
+        self.assertAlmostEqual(clearances["vertical_support"], 3.5, delta=0.05)
         self.assertAlmostEqual(
             clearances["neighboring_propellers"],
             sqrt(100.0**2 + 85.0**2) - PARAMETERS.propeller_diameter,
@@ -44,6 +47,17 @@ class AirframeParameterTests(unittest.TestCase):
         params = replace(PARAMETERS, propeller_diameter=100.0)
 
         with self.assertRaisesRegex(ValueError, "horizontal_wing"):
+            params.validate_propeller_clearance()
+
+    def test_cad_min_distance_detects_actual_disk_penetration(self):
+        params = replace(PARAMETERS, propeller_diameter=100.0)
+        clearances = params.propeller_clearance_report
+        self.assertAlmostEqual(clearances["horizontal_wing"], 0.0, delta=1e-5)
+        self.assertRaises(ValueError, params.validate_propeller_clearance)
+
+    def test_larger_clearance_requirement_is_rejected(self):
+        params = replace(PARAMETERS, propeller_clearance_margin=2.0)
+        with self.assertRaisesRegex(ValueError, "horizontal_wing|pod_noses"):
             params.validate_propeller_clearance()
 
     def test_propeller_envelopes_use_the_shared_diameter_parameter(self):

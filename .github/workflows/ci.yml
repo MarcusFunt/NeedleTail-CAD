@@ -27,7 +27,7 @@ jobs:
           python-version-file: .python-version
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.11.21"
           enable-cache: true
@@ -45,3 +45,22 @@ jobs:
 
       - name: Run geometry and STEP validation tests
         run: uv run --locked python -m unittest discover --verbose
+
+  aerodynamics:
+    name: AeroSandbox / NeuralFoil checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install aero extra with locked environment
+        run: uv sync --locked --extra aero
+      - name: Run independent CAD / aero consistency and physics smoke tests
+        run: uv run --locked --extra aero python -m unittest test_aero_consistency -v
