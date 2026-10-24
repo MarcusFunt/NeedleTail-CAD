@@ -187,3 +187,23 @@ The GitHub Actions CAD job independently regenerates all four STEP files under
 the locked `build123d==0.12.0` / `cadgen==0.7.26` override environment,
 then tests their solid counts and reimport validity. Until a successful run,
 the metadata override must be regarded as provisionally supported.
+
+## Exact previous-versus-compact native STEP comparison
+
+CI additionally checks out historical commit `3ea08b2` into a detached worktree,
+rebuilds its unfused assembly-independent OML STEP using **the same current
+locked Python/build123d/cadgen environment**, and compares that imported solid
+against current `airframe_oml.step`. Run locally with the two STEP paths:
+
+```powershell
+uv run --locked python .\compare_step_geometries.py --old-step .\old_airframe_oml.step --new-step .\airframe_oml.step
+```
+
+The job uploads both validated OML STEP files, surface/volume and envelope
+statistics, and the numeric comparison report. Unlike the AeroSandbox comparison
+these are **actual old and new BREP solids**; the comparison is purely geometric,
+not a higher-fidelity drag calculation. Meaningful viscous-CFD evaluation still
+requires matched Gmsh meshing, consistent reference quantities and farfield,
+grid-convergence sweeps, and appropriate low-Reynolds transitional-flow
+validation. Do not infer improved cruise performance from volume or surface
+area alone.
