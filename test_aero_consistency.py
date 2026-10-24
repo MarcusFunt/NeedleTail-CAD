@@ -66,8 +66,8 @@ class AircraftGeometryConsistency(unittest.TestCase):
                     np.array((-(x_mm + center_x_mm)/1000, y_mm/1000, z_mm/1000)),
                     atol=1e-9, rtol=0,
                 )
-                self.assertAlmostEqual(xsec.width, r_mm / 1000, delta=1e-9)
-                self.assertAlmostEqual(xsec.height, r_mm / 1000, delta=1e-9)
+                self.assertAlmostEqual(xsec.width, 2 * r_mm / 1000, delta=1e-9)
+                self.assertAlmostEqual(xsec.height, 2 * r_mm / 1000, delta=1e-9)
 
     def test_variant_override_changes_only_lifting_spans(self):
         old = build_airplane(wing_span_mm=240.0, support_span_mm=170.0)

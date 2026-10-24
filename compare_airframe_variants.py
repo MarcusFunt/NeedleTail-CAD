@@ -137,6 +137,19 @@ def main():
     args = parser.parse_args()
     rows = generate(args.output_dir)
     print(f"Wrote {len(rows)} common-conditions AeroBuildup comparison rows to {args.output_dir}")
+    for speed in SPEEDS_MPS:
+        for alpha in (0.0, 4.0):
+            group = {r["variant"]: r for r in rows if r["speed_mps"] == speed and r["alpha_deg"] == alpha}
+            old, new = group["previous_240x170_proxy"], group["compact_178x148"]
+            def percent(before, after):
+                return (after / before - 1) * 100 if abs(before) > 1e-12 else float("nan")
+            print(
+                f"COMPARISON speed={speed:g} alpha={alpha:g} "
+                f"old_L_N={old['L_N']:.6f} new_L_N={new['L_N']:.6f} "
+                f"old_D_N={old['D_N']:.6f} new_D_N={new['D_N']:.6f} "
+                f"delta_D_pct={percent(old['D_N'], new['D_N']):+.2f} "
+                f"delta_L_pct={percent(old['L_N'], new['L_N']):+.2f}"
+            )
 
 if __name__ == "__main__":
     main()
