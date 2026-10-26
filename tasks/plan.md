@@ -7,6 +7,9 @@ Collect the work from `codex/airfoil-geometry-and-notes` onto current `main`, wh
 ## Starting Point
 
 - PR #3 is merged on `main` at `41f0fb6b98ac547c43445f7e0afadcb51be1c1d8`.
+- PR #5 (`codex/geometry-candidate-integration`) is merged on `main` at
+  `946b5d2044b073b9e3feb4e08cad6b6eaf325376`; baseline remains the default and
+  the airfoil geometry is a separate candidate.
 - The source branch is 21 commits behind main and contains two feature commits: `347b2bb` (airfoil-driven airframe design) and `dc799ca` (exploratory SU2 rotor CFD workflow).
 - Relative to the merged main baseline, the source branch changes 33 files. Its geometry and aero edits overlap PR #3, so do not merge the stale branch wholesale or replay its commits without adapting them to current interfaces.
 - Port the work onto fresh branches from current main, keep the source branch as a reference, and merge in dependency order.
@@ -75,6 +78,14 @@ These are the source branch's configured assumptions and caps. Retain them for t
 - Hash verification, safe output handling, resource-stop reporting, mesh checks, and sign checks have bounded tests.
 - A configuration/preflight check and one short solver case validate compatibility; no 100-revolution campaign is required for this integration PR.
 - Merge PR 2 after CI and code review pass.
+
+Local solver validation is conditional on available resources. At integration
+time, Gmsh was not installed in the default environment and only 1.44 GiB of RAM
+was available, so generating the 5-zone mesh or starting SU2 would risk crossing
+the campaign's 0.8 GiB RAM stop floor. The default-environment CFD tests and CI
+validation cover config generation, mesh structure, signs, and incomplete runs;
+the one-revolution solver check remains for a machine with the optional mesher
+and sufficient memory.
 
 ## Task 3: Final Mainline Audit
 

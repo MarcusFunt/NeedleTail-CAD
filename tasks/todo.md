@@ -13,16 +13,16 @@ Source commits: `347b2bb` geometry candidate and `dc799ca` exploratory SU2 workf
 - [x] Preserve PR #3 optimizer defaults and named mass scenarios; record geometry identity in outputs.
 - [x] Add/adjust geometry and adapter acceptance checks for coordinate alignment, section thickness, caps, envelopes, and propeller clearances.
 - [x] Update README and design notes to distinguish baseline from candidate and document model limits.
-- [ ] Run the locked default and AeroSandbox verification; open and merge the focused PR after review/CI.
+- [x] Run the locked default and AeroSandbox verification; PR #5 was reviewed/CI-checked and merged to main.
 
 ## PR 2 — Exploratory CFD workflow
 
-- [ ] Branch from updated main after PR 1 merges; port `dc799ca`'s CFD workflow as a separate optional feature.
-- [ ] Keep Gmsh/SU2 requirements out of default test discovery and test CFD code in its optional environment.
-- [ ] Verify solver/source/geometry/config hashes, safe output behavior, and failure/resource-stop reporting.
-- [ ] Add bounded mesh/interface, force normalization, and torque/power sign checks.
-- [ ] Preserve the source branch's operating point, mesh/time-step sequence, thread, runtime, mesh, disk, and RAM defaults for later use.
-- [ ] Run preflight and a short solver compatibility case; do not run the full three-case, 54-solver-hour campaign.
+- [x] Branch from updated main after PR 1 merges; port `dc799ca`'s CFD workflow as a separate optional feature.
+- [x] Keep Gmsh/SU2 requirements out of default test discovery and add CFD unit/config tests to CI without CFD extras.
+- [x] Verify solver/source/geometry/config hashes, safe output behavior, and failure/resource-stop reporting.
+- [x] Add bounded five-zone mesh/boundary checks, force normalization, torque/power sign, and run-completeness checks.
+- [x] Preserve the source branch's operating point, mesh/time-step sequence, thread, runtime, mesh, disk, and RAM defaults for later use.
+- [ ] Run preflight and a short solver compatibility case; do not run the full three-case, 54-solver-hour campaign. Deferred: Gmsh is absent and only 1.44 GiB RAM was available, too close to the 0.8 GiB stop floor for mesh generation.
 - [ ] Open and merge the focused PR after review/CI.
 
 ## Mainline completion

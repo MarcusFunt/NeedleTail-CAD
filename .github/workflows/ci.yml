@@ -116,3 +116,22 @@ jobs:
           name: needle-tail-variant-comparison
           path: tmp/airframe-comparison/
           if-no-files-found: warn
+
+  cfd-bounded-checks:
+    name: CFD reporting and mesh validation without CFD extras
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install only standard locked dependencies
+        run: uv sync --locked
+      - name: Run bounded CFD checks without Gmsh or SU2
+        run: uv run --locked python -m unittest test_detailed_rotor_cfd -v
