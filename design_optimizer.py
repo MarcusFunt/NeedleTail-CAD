@@ -20,8 +20,13 @@ from pathlib import Path
 import numpy as np
 from scipy.optimize import linprog
 
-from design_configuration import (Design, FLAP_MODES, TOPOLOGIES, flap_segments,
-                                  mass_penalty_g, rotor_stations, configuration_name)
+from design_configuration import (DEFAULT_MASS_ASSUMPTIONS_G, Design, FLAP_MODES, TOPOLOGIES, flap_segments,
+                                  mass_breakdown_g, rotor_stations, configuration_name)
+
+
+MASS_SCENARIO_KEYS = {
+    "motor_mass_g", "esc_mass_g", "prop_mass_g", "rear_mount_mass_g", "servo_mass_g",
+}
 
 
 @dataclass(frozen=True)
@@ -39,17 +44,28 @@ class Settings:
     required_roll_Nm: float = .003
     required_pitch_Nm: float = .006
     required_yaw_Nm: float = .006
-    servo_mass_g: float = 2.5
+    servo_mass_g: float = DEFAULT_MASS_ASSUMPTIONS_G["servo_mass_g"]
+    motor_mass_g: float = DEFAULT_MASS_ASSUMPTIONS_G["motor_mass_g"]
+    esc_mass_g: float = DEFAULT_MASS_ASSUMPTIONS_G["esc_mass_g"]
+    prop_mass_g: float = DEFAULT_MASS_ASSUMPTIONS_G["prop_mass_g"]
+    rear_mount_mass_g: float = DEFAULT_MASS_ASSUMPTIONS_G["rear_mount_mass_g"]
     # Mass expressed as a thrust-equivalent score penalty at the studied
     # speed; not a physically solved change in flight trim.
     weight_penalty_fraction: float = .08
     require_modelled_control: bool = True
     geometry_grid_mm: dict[str, list[float]] = field(default_factory=dict)
+    # Named scenarios override only the listed mass assumptions. Every
+    # omitted component inherits the values above.
+    mass_scenarios: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def __post_init__(self):
         for key,value in asdict(self).items():
             if isinstance(value,(float,int)) and (not math.isfinite(value) or value<0):
                 raise ValueError(f"Nonfinite/negative setting: {key}")
+        for key in MASS_SCENARIO_KEYS:
+            value=getattr(self,key)
+            if isinstance(value,bool) or not isinstance(value,(float,int)) or not math.isfinite(value) or value<0:
+                raise ValueError(f"Invalid mass assumption: {key}")
         if not .5<=self.coaxial_pair_efficiency<=1.0:raise ValueError("Coaxial ratio out of bounds")
         if not .5<=self.installed_pusher_efficiency<=1.5:raise ValueError("Pusher ratio out of bounds")
         allowed = {"wing_root_chord","wing_tip_chord","horizontal_motor_offset",
@@ -60,6 +76,16 @@ class Settings:
                any(not isinstance(x,(float,int)) or not math.isfinite(x) or x<=0 for x in v)
                for v in self.geometry_grid_mm.values()):
             raise ValueError("Geometry grids require nonempty lists of positive dimensions")
+        if not isinstance(self.mass_scenarios, dict):
+            raise ValueError("Mass scenarios must be a mapping of names to mass overrides")
+        for name, overrides in self.mass_scenarios.items():
+            if not isinstance(name, str) or not name.strip() or not isinstance(overrides, dict):
+                raise ValueError("Mass scenarios require nonempty names and override mappings")
+            if not set(overrides).issubset(MASS_SCENARIO_KEYS):
+                raise ValueError(f"Unknown mass scenario setting: {set(overrides) - MASS_SCENARIO_KEYS}")
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) or
+                   not math.isfinite(value) or value < 0 for value in overrides.values()):
+                raise ValueError(f"Invalid mass override in scenario {name!r}")
         if not (0<self.per_rotor_thrust_N and 0<self.rho_kg_m3):
             raise ValueError("Unphysical rotor limit or density")
 
@@ -104,6 +130,18 @@ def _flap_matrix(p,d,settings):
     return mat,flaps,areas
 
 
+def _asb_moments_to_cad(moments):
+    """Convert 3xN AeroSandbox moments to CAD body-axis moments.
+
+    Project +X points forward while AeroSandbox +X points aft. Moment is an
+    axial vector, so reflecting X maps (Mx, My, Mz) to (Mx, -My, -Mz).
+    """
+    values=np.asarray(moments,dtype=float)
+    if values.ndim!=2 or values.shape[0]!=3 or not np.isfinite(values).all():
+        raise ValueError("AeroSandbox moments must be a finite 3 x N matrix")
+    return np.diag([1.,-1.,-1.]) @ values
+
+
 def evaluate(p, design:Design, settings:Settings, derivatives=None):
     """Maximize available common rotor thrust subject to pitch/roll/yaw torque.
 
@@ -126,7 +164,15 @@ def evaluate(p, design:Design, settings:Settings, derivatives=None):
     A=np.column_stack((Arot,Aflap))
     goal=np.asarray([-1.]*len(motor_bounds)+[0.]*len(panels))
     res=linprog(goal,A_eq=A,b_eq=target,bounds=bounds,method="highs")
-    mass=mass_penalty_g(design,flap_actuator_g=settings.servo_mass_g)
+    mass_breakdown=mass_breakdown_g(
+        design,
+        motor_g=settings.motor_mass_g,
+        esc_g=settings.esc_mass_g,
+        prop_g=settings.prop_mass_g,
+        rear_mount_g=settings.rear_mount_mass_g,
+        flap_actuator_g=settings.servo_mass_g,
+    )
+    mass=mass_breakdown["total_added_g"]
     base=dict(topology=design.topology,flaps=design.flaps,
               hinge_fraction=design.hinge_fraction,
               flap_start_fraction=design.flap_start_fraction,
@@ -135,10 +181,19 @@ def evaluate(p, design:Design, settings:Settings, derivatives=None):
               coaxial_separation_mm=design.coaxial_separation_mm,
               n_motors=len(motor_bounds),n_flaps=len(panels),
               added_mass_g=mass,
+              mass_breakdown_g=mass_breakdown,
+              mass_assumptions_g={
+                  "motor_mass_g":settings.motor_mass_g,
+                  "esc_mass_g":settings.esc_mass_g,
+                  "prop_mass_g":settings.prop_mass_g,
+                  "rear_mount_mass_g":settings.rear_mount_mass_g,
+                  "servo_mass_g":settings.servo_mass_g,
+              },
               speed_mps=settings.speed_mps,
               control_model=("supplied_derivatives_experimental" if derivatives is not None else
                              "assumed_proxy" if settings.require_modelled_control else "zero"),
-              cad_validated=False, propeller_map_validated=False)
+              cad_validated=False, minimum_cad_clearance_mm=None, cad_error="",
+              propeller_map_validated=False)
     if not res.success:
         return dict(**base,feasible=False, reason=str(res.message),
                     score_N=None,available_collective_N=None,thrust_sacrificed_N=None)
@@ -201,15 +256,29 @@ def optimize(p, settings, derivative_provider=None):
     can replace the illustrative control proxy in each candidate.
     """
     results=[]
+    scenario_overrides=list(settings.mass_scenarios.items()) or [("default",{})]
+    scenarios=[
+        (name,replace(settings,**overrides,mass_scenarios={}))
+        for name,overrides in scenario_overrides
+    ]
+    rankings={name:[] for name,_ in scenarios}
     for params, changed_mm in airframes_from_grid(p,settings):
         for d in candidate_designs():
             derivatives=derivative_provider(params,d) if derivative_provider else None
-            result=evaluate(params,d,settings,derivatives=derivatives)
-            result["geometry_parameters_mm"]=changed_mm
-            results.append(result)
-    return sorted(results,key=lambda row:(row["feasible"],
-                   row["score_N"] if row["score_N"] is not None else -math.inf),
-                  reverse=True)
+            for scenario_name, scenario_settings in scenarios:
+                result=evaluate(params,d,scenario_settings,derivatives=derivatives)
+                result["mass_scenario"]=scenario_name
+                result["scenario_rank"]=0
+                result["geometry_parameters_mm"]=changed_mm
+                rankings[scenario_name].append(result)
+    for scenario_rows in rankings.values():
+        scenario_rows.sort(key=lambda row:(row["feasible"],
+                           row["score_N"] if row["score_N"] is not None else -math.inf),
+                           reverse=True)
+        for rank,row in enumerate(scenario_rows,1):
+            row["scenario_rank"]=rank
+        results.extend(scenario_rows)
+    return results
 
 
 def main(argv=None):
@@ -217,7 +286,7 @@ def main(argv=None):
     parser.add_argument("--settings",type=Path)
     parser.add_argument("--output-dir",type=Path,default=Path("tmp/design-optimizer"))
     parser.add_argument("--experimental-aero-derivatives",action="store_true",
-                        help="Slow unpowered AeroSandbox flap derivatives; signs not validated")
+                        help="Slow unpowered AeroSandbox flap derivatives in CAD body axes")
     parser.add_argument("--check-best-cad",action="store_true",
                         help="Expensive exact CAD checks; report failure without hiding it")
     args=parser.parse_args(argv)
@@ -236,33 +305,50 @@ def main(argv=None):
             if names != wanted:
                 raise ValueError(f"Flap order mismatch: {names} != {wanted}")
             # CAD +X forward, ASB +X aft: pseudovector moment transform.
-            # This mapping and control polarity MUST be verified physically.
-            return np.diag([1.,-1.,-1.]) @ moments_asb
+            # Control polarity still requires physical verification.
+            return _asb_moments_to_cad(moments_asb)
     results=optimize(PARAMETERS,settings,derivative_provider=provider)
     args.output_dir.mkdir(parents=True,exist_ok=True)
     if args.check_best_cad:
         from design_cad import validate_variant
-        for row in results[:9]:
+        cad_cache={}
+        for row in results:
+            if row["scenario_rank"] > 9:
+                continue
+            cad_key=(
+                row["topology"],row["flaps"],row["hinge_fraction"],
+                row["flap_start_fraction"],row["flap_end_fraction"],
+                row["flap_limit_deg"],row["coaxial_separation_mm"],
+                tuple(sorted(row["geometry_parameters_mm"].items())),
+            )
+            if cad_key in cad_cache:
+                row.update(cad_cache[cad_key])
+                continue
             choice=Design(**{k:row[k] for k in (
                 "topology","flaps","hinge_fraction","flap_start_fraction",
                 "flap_end_fraction","flap_limit_deg","coaxial_separation_mm")})
             try:
                 airframe=replace(PARAMETERS,**row["geometry_parameters_mm"])
                 clear=validate_variant(airframe,choice,airframe.propeller_clearance_margin)
-                row["cad_validated"]=True
-                row["minimum_cad_clearance_mm"]=min(clear.values())
+                validation={"cad_validated":True,
+                            "minimum_cad_clearance_mm":min(clear.values()),
+                            "cad_error":""}
             except (ValueError,RuntimeError) as ex:
-                row["cad_error"]=str(ex)
+                validation={"cad_validated":False,"cad_error":str(ex)}
+            cad_cache[cad_key]=validation
+            row.update(validation)
     (args.output_dir/"designs.json").write_text(json.dumps(
         {"assumptions":asdict(settings),"candidates":results},indent=2))
     with (args.output_dir/"designs.csv").open("w",newline="") as f:
         columns=[k for k in results[0] if not isinstance(results[0][k],list)]
         writer=csv.DictWriter(f,fieldnames=columns,extrasaction="ignore")
         writer.writeheader()
-        for row in results:writer.writerow(row)
+        for row in results:
+            writer.writerow({k:json.dumps(v) if isinstance(v,dict) else v for k,v in row.items()})
     print(f"Compared {len(results)} configurations; results at {args.output_dir}")
-    print("Highest screening score (not a maximum-speed prediction):")
-    print(json.dumps(results[0],indent=2))
+    leaders={row["mass_scenario"]:row for row in results if row["scenario_rank"]==1}
+    print("Highest screening score by mass scenario (not a maximum-speed prediction):")
+    print(json.dumps(leaders,indent=2))
 
 
 if __name__=="__main__":

@@ -3,7 +3,7 @@
 No build123d/SU2 required. Run with: python -m unittest -v test_design_optimizer
 """
 import unittest
-from dataclasses import replace
+from dataclasses import asdict, replace
 import numpy as np
 
 from design_configuration import (Design, FLAP_MODES, TOPOLOGIES,
@@ -66,6 +66,89 @@ class DesignTest(unittest.TestCase):
         self.assertAlmostEqual(mass_penalty_g(Design(topology="coaxial8")),61.2)
         self.assertAlmostEqual(mass_penalty_g(Design(flaps="horizontal")),5.)
         self.assertAlmostEqual(mass_penalty_g(Design(flaps="all_four")),10.)
+
+    def test_mass_scenarios_override_defaults_and_export_component_breakdown(self):
+        scenarios = {
+            "light": {
+                "motor_mass_g": 5.0,
+                "esc_mass_g": 1.0,
+                "prop_mass_g": 0.8,
+                "rear_mount_mass_g": 2.0,
+                "servo_mass_g": 1.0,
+            },
+            "baseline": {},
+            "heavy": {
+                "motor_mass_g": 12.0,
+                "esc_mass_g": 3.0,
+                "prop_mass_g": 1.8,
+                "rear_mount_mass_g": 4.0,
+                "servo_mass_g": 3.5,
+            },
+        }
+        settings = Settings(mass_scenarios=scenarios)
+        results = optimize(self.p, settings)
+
+        self.assertEqual(len(results), 225)
+        self.assertEqual(asdict(settings)["mass_scenarios"], scenarios)
+        self.assertEqual({row["mass_scenario"] for row in results}, set(scenarios))
+
+        coaxial_mass = {}
+        for scenario_name, overrides in scenarios.items():
+            scenario_rows = [row for row in results if row["mass_scenario"] == scenario_name]
+            self.assertEqual(len(scenario_rows), 75)
+            self.assertEqual([row["scenario_rank"] for row in scenario_rows], list(range(1, 76)))
+            coaxial = next(
+                row for row in scenario_rows
+                if row["topology"] == "coaxial8" and row["flaps"] == "none"
+            )
+            assumptions = {
+                "motor_mass_g": 9.1,
+                "esc_mass_g": 2.0,
+                "prop_mass_g": 1.2,
+                "rear_mount_mass_g": 3.0,
+                "servo_mass_g": 2.5,
+            }
+            assumptions.update(overrides)
+            self.assertEqual(coaxial["mass_assumptions_g"], assumptions)
+            expected_total = 4 * sum(assumptions[key] for key in (
+                "motor_mass_g", "esc_mass_g", "prop_mass_g", "rear_mount_mass_g"
+            ))
+            self.assertEqual(coaxial["mass_breakdown_g"], {
+                "extra_motors_g": 4 * assumptions["motor_mass_g"],
+                "extra_escs_g": 4 * assumptions["esc_mass_g"],
+                "extra_props_g": 4 * assumptions["prop_mass_g"],
+                "rear_mounts_g": 4 * assumptions["rear_mount_mass_g"],
+                "flap_actuators_g": 0,
+                "total_added_g": expected_total,
+            })
+            self.assertAlmostEqual(coaxial["added_mass_g"], expected_total)
+            coaxial_mass[scenario_name] = coaxial["added_mass_g"]
+
+            coaxial_flaps = next(
+                row for row in scenario_rows
+                if row["topology"] == "coaxial8" and row["flaps"] == "all_four"
+            )
+            self.assertAlmostEqual(
+                coaxial_flaps["mass_breakdown_g"]["flap_actuators_g"],
+                4 * assumptions["servo_mass_g"],
+            )
+            self.assertAlmostEqual(
+                coaxial_flaps["added_mass_g"],
+                expected_total + 4 * assumptions["servo_mass_g"],
+            )
+
+        self.assertLess(coaxial_mass["light"], coaxial_mass["baseline"])
+        self.assertLess(coaxial_mass["baseline"], coaxial_mass["heavy"])
+
+    def test_invalid_mass_scenario_overrides_are_rejected(self):
+        with self.assertRaises(ValueError):
+            Settings(mass_scenarios={"unknown": {"battery_mass_g": 50.0}})
+        with self.assertRaises(ValueError):
+            Settings(mass_scenarios={"negative": {"motor_mass_g": -1.0}})
+        with self.assertRaises(ValueError):
+            Settings(motor_mass_g="9.1")
+        with self.assertRaises(ValueError):
+            Settings(motor_mass_g=True)
 
     def test_invalid_parameters(self):
         for kwargs in (dict(topology="wrong"),dict(flaps="bad"),

@@ -102,10 +102,11 @@ def build_variant_airplane(params, design: Design):
 
 def flap_derivatives(params, design: Design, speed_mps=30., alpha_deg=3.,
                      delta_deg=2., cg_xyz_asb_m=(0., 0., 0.)):
-    """Finite-difference unpowered roll/pitch/yaw moments, in Nm/radian.
+    """Finite-difference unpowered roll/pitch/yaw moments in Nm/rad, ASB axes.
 
     This is attached-flow screening only. No wake, hinge moment, post-stall
     capability, or motor thrust map is represented; do not use at hover.
+    Convert the returned 3xN matrix before using it in CAD body axes.
     """
     import aerosandbox as asb
     import numpy as np
@@ -118,15 +119,26 @@ def flap_derivatives(params, design: Design, speed_mps=30., alpha_deg=3.,
     def evaluate(deflections):
         model = aircraft.with_control_deflections(deflections)
         return asb.AeroBuildup(model, op, xyz_ref=cg_xyz_asb_m).run()
+    def coefficient(result, name):
+        values = np.asarray(result[name], dtype=float).reshape(-1)
+        if values.size != 1:
+            raise ValueError(f"Expected one coefficient for scalar operating point; got {values.size}")
+        return float(values[0])
     out = np.zeros((3, len(names)))
     q = .5 * float(op.atmosphere.density()) * speed_mps**2
     for k, name in enumerate(names):
         plus = evaluate({name:delta_deg})
         minus = evaluate({name:-delta_deg})
         grad = 2 * np.deg2rad(delta_deg)
-        out[:, k] = q * np.asarray([
-            aircraft.s_ref * aircraft.b_ref * (plus["Cl"] - minus["Cl"]),
-            aircraft.s_ref * aircraft.c_ref * (plus["Cm"] - minus["Cm"]),
-            aircraft.s_ref * aircraft.b_ref * (plus["Cn"] - minus["Cn"]),
-        ], float) / grad
+        coefficient_delta = np.asarray([
+            coefficient(plus, "Cl") - coefficient(minus, "Cl"),
+            coefficient(plus, "Cm") - coefficient(minus, "Cm"),
+            coefficient(plus, "Cn") - coefficient(minus, "Cn"),
+        ])
+        moment_scales = np.asarray([
+            aircraft.s_ref * aircraft.b_ref,
+            aircraft.s_ref * aircraft.c_ref,
+            aircraft.s_ref * aircraft.b_ref,
+        ])
+        out[:, k] = q * moment_scales * coefficient_delta / grad
     return names, out

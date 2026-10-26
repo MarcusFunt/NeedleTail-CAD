@@ -70,10 +70,11 @@ does **not** include full geometry-dependent lift, trim or propulsion, so
 its ordering must not be used as a speed-optimum claim.
 
 To explore geometry-dependent (but still unpowered) AeroSandbox flap moments,
-add `--experimental-aero-derivatives`. The adapter includes a provisional
-ASB-to-CAD moment-frame transformation; sign correctness must be validated
-against independently applied plus/minus flap deflections before control
-hardware or a flight controller uses these estimates.
+add `--experimental-aero-derivatives`. Regression tests finite-difference plus
+and minus deflections at two operating points and check the ASB-to-CAD moment
+signs. This verifies the model's axis and polarity convention; actual servo
+polarity and installed-flow derivatives still require physical validation
+before control hardware or a flight controller uses these estimates.
 
 ## What the optimizer actually does
 
@@ -87,6 +88,14 @@ For each of the 9 mode combinations, the script tests hinge fractions 0.65/0.72/
 - Assumed deflections, residual and per-trial provenance flags
 
 It is **not** a flight-speed optimizer yet. The objective does not solve total longitudinal force balance, battery electrical power, motor–prop torque/RPM, real CG or transition dynamics. Do not interpret its score as max speed, validated control margins or aircraft stability.
+
+### Mass assumptions and sensitivity scenarios
+
+The optimizer treats hardware mass as a replaceable estimate. `design_optimizer_settings.json` exposes the assumed mass of an added motor, ESC, propeller, rear mount, and flap servo/actuator. The values at the top level are the baseline assumptions. `mass_scenarios` names alternate runs and overrides only the components that differ; omitted components inherit the baseline values.
+
+The sample settings compare `baseline` with light and heavy sensitivity cases set 20% below and above those baseline guesses. These are example brackets, not selected hardware specifications. Replace them as the candidate hardware becomes clearer, or add scenarios for different motor/prop/servo combinations. Each output row records the scenario, the assumptions used, the added-mass component breakdown, and its rank within that scenario. `--check-best-cad` checks the top nine candidates in each named scenario.
+
+The added-mass estimate is relative to the existing 4-tractor/no-flap baseline. It does not include a complete aircraft weight or solve the effect of total weight on trim; the optimizer uses it only as the documented score penalty.
 
 ### Why two versus four surfaces is worth evaluating
 

@@ -11,6 +11,13 @@ from math import isfinite
 TOPOLOGIES = ("tractor4", "pusher4", "coaxial8")
 FLAP_MODES = ("none", "horizontal", "all_four")
 STATIONS = ("left", "right", "bottom", "top")
+DEFAULT_MASS_ASSUMPTIONS_G = {
+    "motor_mass_g": 9.1,
+    "esc_mass_g": 2.0,
+    "prop_mass_g": 1.2,
+    "rear_mount_mass_g": 3.0,
+    "servo_mass_g": 2.5,
+}
 
 
 @dataclass(frozen=True)
@@ -96,14 +103,48 @@ def flap_segments(p, d: Design):
     return tuple(out)
 
 
-def mass_penalty_g(d: Design, *, motor_g=9.1, esc_g=2., prop_g=1.2,
-                   rear_mount_g=3., flap_actuator_g=2.5):
-    """Added mass vs 4-tractor/no flaps, not a complete weight estimate."""
+def mass_breakdown_g(
+    d: Design,
+    *,
+    motor_g=DEFAULT_MASS_ASSUMPTIONS_G["motor_mass_g"],
+    esc_g=DEFAULT_MASS_ASSUMPTIONS_G["esc_mass_g"],
+    prop_g=DEFAULT_MASS_ASSUMPTIONS_G["prop_mass_g"],
+    rear_mount_g=DEFAULT_MASS_ASSUMPTIONS_G["rear_mount_mass_g"],
+    flap_actuator_g=DEFAULT_MASS_ASSUMPTIONS_G["servo_mass_g"],
+):
+    """Return assumed added hardware masses vs the 4-tractor/no-flap baseline."""
     extra_rotors = 4 if d.topology == "coaxial8" else 0
     n_flaps = len(("left", "right")) if d.flaps == "horizontal" else (
         4 if d.flaps == "all_four" else 0)
-    return (extra_rotors * (motor_g + esc_g + prop_g + rear_mount_g) +
-            n_flaps * flap_actuator_g)
+    breakdown = {
+        "extra_motors_g": extra_rotors * motor_g,
+        "extra_escs_g": extra_rotors * esc_g,
+        "extra_props_g": extra_rotors * prop_g,
+        "rear_mounts_g": extra_rotors * rear_mount_g,
+        "flap_actuators_g": n_flaps * flap_actuator_g,
+    }
+    breakdown["total_added_g"] = sum(breakdown.values())
+    return breakdown
+
+
+def mass_penalty_g(
+    d: Design,
+    *,
+    motor_g=DEFAULT_MASS_ASSUMPTIONS_G["motor_mass_g"],
+    esc_g=DEFAULT_MASS_ASSUMPTIONS_G["esc_mass_g"],
+    prop_g=DEFAULT_MASS_ASSUMPTIONS_G["prop_mass_g"],
+    rear_mount_g=DEFAULT_MASS_ASSUMPTIONS_G["rear_mount_mass_g"],
+    flap_actuator_g=DEFAULT_MASS_ASSUMPTIONS_G["servo_mass_g"],
+):
+    """Added mass vs 4-tractor/no flaps, not a complete weight estimate."""
+    return mass_breakdown_g(
+        d,
+        motor_g=motor_g,
+        esc_g=esc_g,
+        prop_g=prop_g,
+        rear_mount_g=rear_mount_g,
+        flap_actuator_g=flap_actuator_g,
+    )["total_added_g"]
 
 
 def configuration_name(d: Design):
