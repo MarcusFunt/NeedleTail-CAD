@@ -51,6 +51,30 @@ names, dmoment_dflap = flap_derivatives(PARAMETERS, d, speed_mps=30)
 
 Check the physical coordinate convention/sign and AeroSandbox release before feeding derivatives into the optimizer. The adapter currently produces *unpowered attached-flow* effects. It does **not** model a rotor slipstream, structural hinge torque, aeroelastic deflection, servo packaging or large-angle transition flow.
 
+## Joint geometry and optional aerodynamic optimization
+
+The optimizer uses `AirframeParameters` as the **only** source of physical dimensions.
+`design_geometry_grid_example.json` demonstrates an opt-in sweep of horizontal
+motor offset and wing chords, jointly crossed with the 9 propulsion/flap families:
+
+```powershell
+uv run --locked --extra aero python design_optimizer.py --settings design_geometry_grid_example.json
+```
+
+You may vary `wing_root_chord`, `wing_tip_chord`,
+`horizontal_motor_offset`, `vertical_motor_offset`, and
+`fuselage_length` in millimeters. Invalid CAD parameters are rejected by
+the baseline geometric checks; exact 3D geometry validation is available for
+shortlisted candidates using `--check-best-cad`. This initial score still
+does **not** include full geometry-dependent lift, trim or propulsion, so
+its ordering must not be used as a speed-optimum claim.
+
+To explore geometry-dependent (but still unpowered) AeroSandbox flap moments,
+add `--experimental-aero-derivatives`. The adapter includes a provisional
+ASB-to-CAD moment-frame transformation; sign correctness must be validated
+against independently applied plus/minus flap deflections before control
+hardware or a flight controller uses these estimates.
+
 ## What the optimizer actually does
 
 For each of the 9 mode combinations, the script tests hinge fractions 0.65/0.72/0.80, exposed-span start 0.18/0.35 and deflection limit 15°/25° (no-flap modes are each evaluated once). At the selected trial airspeed it assembles a bounded **roll/pitch/yaw** moment-allocation matrix from rotor station lever arms and estimated flap pressure/area. It solves an LP for maximum collective rotor thrust while satisfying prescribed moment demands. Then it subtracts a notional flap drag and mass penalty. It reports:
