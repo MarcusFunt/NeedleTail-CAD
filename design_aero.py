@@ -17,9 +17,11 @@ def _section_wing(params, axis, side, d, asb, aero):
     if axis == "horizontal":
         chord_at = lambda v: params.wing_root_chord + (params.wing_tip_chord - params.wing_root_chord) * abs(v) / halfspan
         airfoil_name, te = params.wing_airfoil, params.wing_trailing_edge
+        thickness_scale = params.wing_thickness_scale
     else:
         chord_at = lambda v: params.support_chord
         airfoil_name, te = params.support_airfoil, params.support_trailing_edge
+        thickness_scale = params.support_thickness_scale
     label = {"horizontal": ("left", "right"), "vertical": ("bottom", "top")}[axis][side > 0]
     tag = label
     if side < 0:
@@ -31,15 +33,18 @@ def _section_wing(params, axis, side, d, asb, aero):
     sections = []
     for index, s in enumerate(positions):
         chord = chord_at(s)
-        foil = aero._airfoil_for_section(f"{tag}_{index}", airfoil_name, chord, te)
+        foil = aero._airfoil_for_section(
+            f"{tag}_{index}", airfoil_name, chord, te, thickness_scale
+        )
         if axis == "vertical":
             foil = aero._vertical_airfoil(foil, f"{tag}_{index}_vertical")
         cs = ([asb.ControlSurface(
             name=tag, hinge_point=d.hinge_fraction, trailing_edge=True,
             symmetric=True, deflection=0.0,
         )] if index == active_start_index else [])
-        xyz = [aero._asb_x(chord / 2), s / 1000., 0.] if axis == "horizontal" else [
-            aero._asb_x(chord / 2), 0., s / 1000.]
+        leading_edge_x = aero._asb_x(params.assembly_x_offset + chord / 2)
+        xyz = [leading_edge_x, s / 1000., 0.] if axis == "horizontal" else [
+            leading_edge_x, 0., s / 1000.]
         sections.append(asb.WingXSec(
             xyz_le=xyz, chord=chord / 1000., airfoil=foil, control_surfaces=cs,
         ))
@@ -90,7 +95,7 @@ def build_variant_airplane(params, design: Design):
         for name, y, z in motor_positions(params):
             nacelles.append(aero._make_fuselage(
                 f"{design.topology}_{name}_nacelle", profile,
-                center_x_mm=params.motor_station_x,
+                center_x_mm=params.motor_pod_center_x,
                 center_y_m=y / 1000, center_z_m=z / 1000,
             ))
     return asb.Airplane(

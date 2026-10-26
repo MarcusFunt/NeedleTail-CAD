@@ -134,7 +134,7 @@ class GeneratedStepExportTests(unittest.TestCase):
         "airframe_oml.step": 1,
         "airframe.step": 7,
         "propeller_envelope.step": 4,
-        "motor_prop_installation.step": 8,
+        "motor_prop_installation.step": 9,
     }
 
     def test_step_exports_reimport_as_valid_shapes_with_expected_solids(self):

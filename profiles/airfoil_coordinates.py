@@ -1,139 +1,75 @@
-"""Immutable coordinate tables mirrored from the original UIUC Selig .dat files."""
+"""Coordinate catalog loaded from vendored UIUC Selig-format airfoil files."""
 
-PROFILE_SOURCES = {
+from __future__ import annotations
+
+from functools import lru_cache
+from hashlib import sha256
+from pathlib import Path
+
+
+PROFILE_DIRECTORY = Path(__file__).with_name("original")
+UIUC_PROFILE_URL = "https://m-selig.ae.illinois.edu/ads/coord_seligFmt/"
+
+
+def _read_profile(path: Path) -> tuple[tuple[float, float], ...]:
+    """Read a Selig .dat coordinate file, ignoring its title and comments."""
+    points = []
+    for line in path.read_text(encoding="ascii").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        fields = stripped.replace(",", " ").split()
+        if len(fields) < 2:
+            continue
+        try:
+            x, y = float(fields[0]), float(fields[1])
+        except ValueError:
+            continue
+        points.append((x, y))
+    if len(points) < 4:
+        raise ValueError(f"Airfoil file {path} contains fewer than four coordinates")
+    return tuple(points)
+
+
+@lru_cache(maxsize=1)
+def load_airfoil_library() -> dict[str, tuple[tuple[float, float], ...]]:
+    """Return all vendored .dat profiles, keyed by uppercase file stem."""
+    profiles = {
+        path.stem.upper(): _read_profile(path)
+        for path in sorted(PROFILE_DIRECTORY.glob("*.dat"))
+    }
+    if not profiles:
+        raise FileNotFoundError(f"No airfoil .dat files found in {PROFILE_DIRECTORY}")
+    return profiles
+
+
+AIRFOIL_COORDINATES = load_airfoil_library()
+AIRFOIL_CATALOG = {
+    name: {
+        "file": f"{name.lower()}.dat",
+        "source_url": f"{UIUC_PROFILE_URL}{name.lower()}.dat",
+        "sha256": sha256(
+            (PROFILE_DIRECTORY / f"{name.lower()}.dat").read_bytes()
+        ).hexdigest(),
+    }
+    for name in AIRFOIL_COORDINATES
 }
-SD7003_SOURCE_URL = "https://m-selig.ae.illinois.edu/ads/coord_seligFmt/sd7003.dat"
-SD7003_SOURCE_SHA256 = "e1d21453019f58d609c7ddeab4a67829d489a116e3684fd57273215ec8727714"
-SD7003_COORDINATES = (
-    (1.00000000, 0.00000000),
-    (0.99681000, 0.00031000),
-    (0.98745000, 0.00132000),
-    (0.97235000, 0.00310000),
-    (0.95193000, 0.00547000),
-    (0.92639000, 0.00824000),
-    (0.89600000, 0.01139000),
-    (0.86112000, 0.01494000),
-    (0.82224000, 0.01884000),
-    (0.77985000, 0.02304000),
-    (0.73449000, 0.02744000),
-    (0.68673000, 0.03197000),
-    (0.63717000, 0.03649000),
-    (0.58641000, 0.04086000),
-    (0.53499000, 0.04494000),
-    (0.48350000, 0.04859000),
-    (0.43249000, 0.05171000),
-    (0.38250000, 0.05415000),
-    (0.33405000, 0.05581000),
-    (0.28760000, 0.05658000),
-    (0.24358000, 0.05639000),
-    (0.20240000, 0.05518000),
-    (0.16442000, 0.05292000),
-    (0.12993000, 0.04961000),
-    (0.09921000, 0.04526000),
-    (0.07244000, 0.03993000),
-    (0.04978000, 0.03372000),
-    (0.03130000, 0.02677000),
-    (0.01702000, 0.01932000),
-    (0.00697000, 0.01172000),
-    (0.00127000, 0.00438000),
-    (0.00025000, -0.00186000),
-    (0.00457000, -0.00741000),
-    (0.01408000, -0.01285000),
-    (0.02839000, -0.01759000),
-    (0.04763000, -0.02141000),
-    (0.07182000, -0.02438000),
-    (0.10073000, -0.02660000),
-    (0.13407000, -0.02809000),
-    (0.17150000, -0.02888000),
-    (0.21268000, -0.02900000),
-    (0.25719000, -0.02852000),
-    (0.30456000, -0.02752000),
-    (0.35426000, -0.02608000),
-    (0.40572000, -0.02428000),
-    (0.45837000, -0.02217000),
-    (0.51161000, -0.01980000),
-    (0.56484000, -0.01723000),
-    (0.61748000, -0.01450000),
-    (0.66898000, -0.01167000),
-    (0.71883000, -0.00887000),
-    (0.76644000, -0.00628000),
-    (0.81118000, -0.00403000),
-    (0.85241000, -0.00220000),
-    (0.88957000, -0.00082000),
-    (0.92210000, 0.00008000),
-    (0.94952000, 0.00052000),
-    (0.97134000, 0.00057000),
-    (0.98718000, 0.00037000),
-    (0.99679000, 0.00011000),
-    (1.00001000, -0.00000000),
-)
 
-PROFILE_SOURCES["SD7003"] = (SD7003_SOURCE_URL, SD7003_SOURCE_SHA256)
+# Backwards-compatible coordinate names used by existing scripts.
+SD7003_COORDINATES = AIRFOIL_COORDINATES["SD7003"]
+SD7037_COORDINATES = AIRFOIL_COORDINATES["SD7037"]
+SD8020_COORDINATES = AIRFOIL_COORDINATES["SD8020"]
+E423_COORDINATES = AIRFOIL_COORDINATES["E423"]
+NACA0010_COORDINATES = AIRFOIL_COORDINATES["NACA0010"]
+NACA0015_COORDINATES = AIRFOIL_COORDINATES["NACA0015"]
+NACA2412_COORDINATES = AIRFOIL_COORDINATES["NACA2412"]
+NACA2415_COORDINATES = AIRFOIL_COORDINATES["NACA2415"]
+NACA4412_COORDINATES = AIRFOIL_COORDINATES["NACA4412"]
 
-SD8020_SOURCE_URL = "https://m-selig.ae.illinois.edu/ads/coord_seligFmt/sd8020.dat"
-SD8020_SOURCE_SHA256 = "102c8b1d93c5b02ae547b27a50340ff326975e0c75ba13adfe737cc7812c3ea7"
-SD8020_COORDINATES = (
-    (1.00000000, 0.00000000),
-    (0.99646000, 0.00027000),
-    (0.98625000, 0.00131000),
-    (0.97017000, 0.00330000),
-    (0.94885000, 0.00591000),
-    (0.92247000, 0.00876000),
-    (0.89118000, 0.01188000),
-    (0.85538000, 0.01532000),
-    (0.81560000, 0.01908000),
-    (0.77237000, 0.02308000),
-    (0.72627000, 0.02722000),
-    (0.67789000, 0.03135000),
-    (0.62777000, 0.03535000),
-    (0.57647000, 0.03909000),
-    (0.52456000, 0.04246000),
-    (0.47261000, 0.04536000),
-    (0.42116000, 0.04770000),
-    (0.37077000, 0.04938000),
-    (0.32196000, 0.05034000),
-    (0.27523000, 0.05051000),
-    (0.23106000, 0.04982000),
-    (0.18987000, 0.04824000),
-    (0.15203000, 0.04574000),
-    (0.11789000, 0.04233000),
-    (0.08774000, 0.03802000),
-    (0.06179000, 0.03287000),
-    (0.04024000, 0.02697000),
-    (0.02318000, 0.02041000),
-    (0.01065000, 0.01345000),
-    (0.00276000, 0.00645000),
-    (0.00000000, 0.00000000),
-    (0.00276000, -0.00645000),
-    (0.01066000, -0.01345000),
-    (0.02319000, -0.02041000),
-    (0.04024000, -0.02697000),
-    (0.06180000, -0.03287000),
-    (0.08774000, -0.03802000),
-    (0.11790000, -0.04233000),
-    (0.15204000, -0.04574000),
-    (0.18987000, -0.04824000),
-    (0.23107000, -0.04982000),
-    (0.27524000, -0.05051000),
-    (0.32197000, -0.05034000),
-    (0.37077000, -0.04938000),
-    (0.42117000, -0.04769000),
-    (0.47262000, -0.04536000),
-    (0.52457000, -0.04246000),
-    (0.57648000, -0.03908000),
-    (0.62778000, -0.03534000),
-    (0.67790000, -0.03135000),
-    (0.72629000, -0.02722000),
-    (0.77238000, -0.02308000),
-    (0.81561000, -0.01907000),
-    (0.85539000, -0.01532000),
-    (0.89119000, -0.01188000),
-    (0.92248000, -0.00876000),
-    (0.94886000, -0.00591000),
-    (0.97018000, -0.00330000),
-    (0.98626000, -0.00131000),
-    (0.99647000, -0.00027000),
-    (1.00000000, 0.00000000),
-)
-
-PROFILE_SOURCES["SD8020"] = (SD8020_SOURCE_URL, SD8020_SOURCE_SHA256)
+# Preserve the former source metadata names for the two original sections.
+PROFILE_SOURCES = {
+    name: (metadata["source_url"], metadata["sha256"])
+    for name, metadata in AIRFOIL_CATALOG.items()
+}
+SD7003_SOURCE_URL, SD7003_SOURCE_SHA256 = PROFILE_SOURCES["SD7003"]
+SD8020_SOURCE_URL, SD8020_SOURCE_SHA256 = PROFILE_SOURCES["SD8020"]

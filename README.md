@@ -41,6 +41,37 @@ wing and 5,624 mm² for the vertical support; these exclude fuselage overlap and
 are not aerodynamic effective-area estimates. Relative to 260 mm and 190 mm
 baseline spans, the changes reduce planform area by 31.5% and 22.1%.
 
+## Preliminary airfoil geometry candidate
+
+The merged PR #3 geometry remains the default (`PARAMETERS`). The revised
+airfoil-driven layout is available separately as
+`AIRFOIL_CANDIDATE_PARAMETERS`; its supplied dimensions are intentionally kept
+as a preliminary candidate and have not been tuned. It uses a 230 × 60 mm
+NACA 0015-derived fuselage, 80/56 mm NACA 2415 wing chords, a 64 mm NACA 0015
+support, 95/80 mm motor offsets, 124 × 19.9 mm NACA 0015 pods, and the shared
+−5 mm assembly offset with a +1 mm local pod station. CAD and aerodynamic
+builders accept an explicit `AirframeParameters` value, so callers can use
+`build_components(AIRFOIL_CANDIDATE_PARAMETERS)` or
+`whole_aircraft_aero.build_airplane(AIRFOIL_CANDIDATE_PARAMETERS)` without
+changing the baseline. To export candidate STEP files alongside the baseline
+exports, run `uv run --locked python .\airframe_candidate.py --force`; this
+creates `airframe_candidate.step` and `airframe_candidate_oml.step`.
+
+The optimizer and airfoil-polar tool offer named selection. For example:
+
+```powershell
+uv run --locked --extra aero python design_optimizer.py --geometry airfoil_candidate
+uv run --locked --extra aero python airfoil_polars.py --geometry airfoil_candidate --output-dir .\tmp\airfoil-candidate-polars
+uv run --locked --extra aero python compare_airframe_aero.py --geometry airfoil_candidate
+```
+
+Optimizer rows record `geometry_configuration` alongside the existing mass
+scenario. The comparison scripts and the five files in `design_notes/` retain
+the source branch's geometry studies and assumptions. They are exploratory
+records: their panel/VLM or AeroBuildup estimates are unpowered and do not
+resolve transition, propeller slipstream, structural margins, or the eventual
+center of gravity. They do not promote the candidate or select a topology.
+
 The 76.2 mm swept-disk envelope is tied to the shared airframe parameters and
 checked against pod noses, both lifting surfaces, the fuselage, and adjacent
 disks. Current modeled clearances are 1.5 mm to the pod noses, 8.5 mm to the

@@ -55,18 +55,20 @@ class RotorStation:
 
 
 def motor_positions(p):
-    return (("left", -p.horizontal_motor_offset, 0.),
-            ("right", p.horizontal_motor_offset, 0.),
-            ("bottom", 0., -p.vertical_motor_offset),
-            ("top", 0., p.vertical_motor_offset))
+    motor_z = getattr(p, "motor_axis_z_offset_from_pod_center", 0.0)
+    return (("left", -p.horizontal_motor_offset, motor_z),
+            ("right", p.horizontal_motor_offset, motor_z),
+            ("bottom", 0., -p.vertical_motor_offset + motor_z),
+            ("top", 0., p.vertical_motor_offset + motor_z))
 
 
 def rotor_stations(p, d: Design):
     """All thrust axes point toward CAD +X, regardless of motor placement."""
+    pod_center_x = getattr(p, "motor_pod_center_x", p.motor_station_x)
     front_x = p.prop_hub_center_x
     rear_x = (front_x - d.coaxial_separation_mm if d.coaxial_separation_mm
               is not None and d.topology == "coaxial8"
-              else 2 * p.motor_station_x - front_x)
+              else 2 * pod_center_x - front_x)
     # Equal-throttle torque balance. Actual CW/CCW choice requires verification.
     spin = {"left": 1, "right": 1, "bottom": -1, "top": -1}
     out = []

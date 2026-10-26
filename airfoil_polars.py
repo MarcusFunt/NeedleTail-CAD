@@ -1,4 +1,4 @@
-"""Generate geometry-matched SD7003 and SD8020 airfoil polars.
+"""Generate geometry-matched airfoil polars for a named airframe geometry.
 
 Requires AeroSandbox (which includes NeuralFoil). XFOIL is optional and must
 be installed separately; pass its executable with ``--xfoil`` to generate the
@@ -19,7 +19,12 @@ import aerosandbox as asb
 import aerosandbox.numpy as np
 import neuralfoil
 
-from airframe_geometry import PARAMETERS, _section_coordinates
+from airframe_geometry import (
+    PARAMETERS,
+    AirframeParameters,
+    _section_coordinates,
+    airframe_parameters_for_geometry,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -30,11 +35,17 @@ XFOIL_REYNOLDS_NUMBERS = (50_000, 100_000, 200_000)
 XFOIL_ALPHAS = np.array([-2.0, 0.0, 2.0, 4.0, 6.0, 8.0])
 N_CRIT = 9.0
 
-SECTIONS = (
-    ("wing_root", PARAMETERS.wing_airfoil, PARAMETERS.wing_root_chord),
-    ("wing_tip", PARAMETERS.wing_airfoil, PARAMETERS.wing_tip_chord),
-    ("vertical_support", PARAMETERS.support_airfoil, PARAMETERS.support_chord),
-)
+def _sections_for(parameters: AirframeParameters):
+    return (
+        ("wing_root", parameters.wing_airfoil, parameters.wing_root_chord),
+        ("wing_tip", parameters.wing_airfoil, parameters.wing_tip_chord),
+        ("vertical_support", parameters.support_airfoil, parameters.support_chord),
+    )
+
+
+# Keep the original module-level baseline section list for existing callers.
+SECTIONS = _sections_for(PARAMETERS)
+
 
 POLAR_FIELDS = (
     "CL",
@@ -46,14 +57,22 @@ POLAR_FIELDS = (
 )
 
 
-def _geometry_matched_airfoil(section_name: str, airfoil_name: str, chord_mm: float):
+def _geometry_matched_airfoil(
+    section_name: str,
+    airfoil_name: str,
+    chord_mm: float,
+    parameters: AirframeParameters = PARAMETERS,
+):
     """Create an AeroSandbox airfoil from the exact CAD section coordinates."""
     upper, lower = _section_coordinates(
         airfoil_name,
         chord_mm,
-        PARAMETERS.wing_trailing_edge
+        parameters.wing_trailing_edge
         if section_name.startswith("wing_")
-        else PARAMETERS.support_trailing_edge,
+        else parameters.support_trailing_edge,
+        thickness_scale=parameters.wing_thickness_scale
+        if section_name.startswith("wing_")
+        else parameters.support_thickness_scale,
     )
     # _section_coordinates returns LE-to-TE upper and lower surfaces. Store a
     # standard airfoil contour from upper TE, over the leading edge, to lower
@@ -61,9 +80,9 @@ def _geometry_matched_airfoil(section_name: str, airfoil_name: str, chord_mm: fl
     coordinates = np.asarray(list(reversed(upper)) + lower[1:], dtype=float)
     airfoil = asb.Airfoil(name=f"{section_name}_{airfoil_name}_CAD_TE", coordinates=coordinates)
     te_thickness_mm = (
-        PARAMETERS.wing_trailing_edge
+        parameters.wing_trailing_edge
         if section_name.startswith("wing_")
-        else PARAMETERS.support_trailing_edge
+        else parameters.support_trailing_edge
     )
     return airfoil, coordinates, te_thickness_mm
 
@@ -82,13 +101,22 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def generate_neuralfoil(output_dir: Path):
+def generate_neuralfoil(
+    output_dir: Path,
+    parameters: AirframeParameters = PARAMETERS,
+):
     rows: list[dict] = []
     section_data: dict[str, dict] = {}
+    sections = _sections_for(parameters)
 
-    for section_name, airfoil_name, chord_mm in SECTIONS:
+    for section_name, airfoil_name, chord_mm in sections:
         airfoil, coordinates, te_thickness_mm = _geometry_matched_airfoil(
-            section_name, airfoil_name, chord_mm
+            section_name, airfoil_name, chord_mm, parameters
+        )
+        thickness_scale = (
+            parameters.wing_thickness_scale
+            if section_name.startswith("wing_")
+            else parameters.support_thickness_scale
         )
         section_data[section_name] = {
             "airfoil": airfoil,
@@ -96,6 +124,7 @@ def generate_neuralfoil(output_dir: Path):
             "airfoil_name": airfoil_name,
             "chord_mm": chord_mm,
             "te_thickness_mm": te_thickness_mm,
+            "thickness_scale": thickness_scale,
         }
         _write_airfoil_dat(
             output_dir / f"{section_name}_{airfoil_name}_cad_profile.dat",
@@ -117,6 +146,7 @@ def generate_neuralfoil(output_dir: Path):
                     "airfoil": airfoil_name,
                     "chord_mm": chord_mm,
                     "trailing_edge_mm": te_thickness_mm,
+                    "thickness_scale": thickness_scale,
                     "trailing_edge_ratio": te_thickness_mm / chord_mm,
                     "Re": reynolds,
                     "alpha_deg": float(alpha),
@@ -127,7 +157,7 @@ def generate_neuralfoil(output_dir: Path):
                 rows.append(row)
 
     fields = [
-        "section", "airfoil", "chord_mm", "trailing_edge_mm",
+        "section", "airfoil", "chord_mm", "trailing_edge_mm", "thickness_scale",
         "trailing_edge_ratio", "Re", "alpha_deg", "model", *POLAR_FIELDS,
     ]
     _write_csv(output_dir / "airfoil_section_polars_neuralfoil.csv", fields, rows)
@@ -138,6 +168,7 @@ def generate_xfoil(
     output_dir: Path,
     xfoil_command: str,
     neuralfoil_rows: list[dict],
+    parameters: AirframeParameters = PARAMETERS,
 ) -> tuple[list[dict], list[dict]]:
     xfoil_rows: list[dict] = []
     comparison_rows: list[dict] = []
@@ -146,9 +177,9 @@ def generate_xfoil(
         for row in neuralfoil_rows
     }
 
-    for section_name, airfoil_name, chord_mm in SECTIONS:
+    for section_name, airfoil_name, chord_mm in _sections_for(parameters):
         airfoil, _, te_thickness_mm = _geometry_matched_airfoil(
-            section_name, airfoil_name, chord_mm
+            section_name, airfoil_name, chord_mm, parameters
         )
         for reynolds in XFOIL_REYNOLDS_NUMBERS:
             try:
@@ -243,11 +274,16 @@ def generate_xfoil(
     return xfoil_rows, comparison_rows
 
 
-def plot_neuralfoil(output_dir: Path, rows: list[dict]) -> None:
+def plot_neuralfoil(
+    output_dir: Path,
+    rows: list[dict],
+    parameters: AirframeParameters = PARAMETERS,
+) -> None:
     import matplotlib.pyplot as plt
 
-    fig, axes = plt.subplots(2, len(SECTIONS), figsize=(15, 8))
-    for column, (section_name, airfoil_name, chord_mm) in enumerate(SECTIONS):
+    sections = _sections_for(parameters)
+    fig, axes = plt.subplots(2, len(sections), figsize=(15, 8))
+    for column, (section_name, airfoil_name, chord_mm) in enumerate(sections):
         section_rows = [row for row in rows if row["section"] == section_name]
         for reynolds in REYNOLDS_NUMBERS:
             polar = [row for row in section_rows if row["Re"] == reynolds]
@@ -282,7 +318,10 @@ def plot_neuralfoil(output_dir: Path, rows: list[dict]) -> None:
     plt.close(fig)
 
 
-def summarize_comparison(rows: list[dict]) -> list[dict]:
+def summarize_comparison(
+    rows: list[dict],
+    parameters: AirframeParameters = PARAMETERS,
+) -> list[dict]:
     groups: dict[tuple[str, int], list[dict]] = {}
     for row in rows:
         groups.setdefault((row["section"], int(row["Re"])), []).append(row)
@@ -299,7 +338,7 @@ def summarize_comparison(rows: list[dict]) -> list[dict]:
             * 100
             for row in group
         ]
-        section = next(item for item in SECTIONS if item[0] == section_name)
+        section = next(item for item in _sections_for(parameters) if item[0] == section_name)
         summary.append({
             "section": section_name,
             "airfoil": section[1],
@@ -321,14 +360,16 @@ def plot_xfoil_comparison(
     output_dir: Path,
     neuralfoil_rows: list[dict],
     comparison_rows: list[dict],
+    parameters: AirframeParameters = PARAMETERS,
 ) -> None:
     if not comparison_rows:
         return
     import matplotlib.pyplot as plt
 
     colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(XFOIL_REYNOLDS_NUMBERS)))
-    fig, axes = plt.subplots(2, len(SECTIONS), figsize=(15, 8))
-    for column, (section_name, airfoil_name, chord_mm) in enumerate(SECTIONS):
+    sections = _sections_for(parameters)
+    fig, axes = plt.subplots(2, len(sections), figsize=(15, 8))
+    for column, (section_name, airfoil_name, chord_mm) in enumerate(sections):
         for color, reynolds in zip(colors, XFOIL_REYNOLDS_NUMBERS):
             nf = [
                 row for row in neuralfoil_rows
@@ -382,7 +423,13 @@ def plot_xfoil_comparison(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--geometry",
+        choices=("pr3_baseline", "airfoil_candidate"),
+        default="pr3_baseline",
+        help="Named geometry whose CAD-matched sections will be analyzed",
+    )
     parser.add_argument(
         "--xfoil",
         type=str,
@@ -390,20 +437,26 @@ def main() -> None:
         help="Path to an XFOIL executable; omit to generate NeuralFoil results only.",
     )
     args = parser.parse_args()
-    output_dir = args.output_dir.resolve()
+    parameters = airframe_parameters_for_geometry(args.geometry)
+    default_output_dir = (
+        DEFAULT_OUTPUT_DIR
+        if args.geometry == "pr3_baseline"
+        else DEFAULT_OUTPUT_DIR.parent / f"{DEFAULT_OUTPUT_DIR.name}-{args.geometry}"
+    )
+    output_dir = (args.output_dir or default_output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    section_data, neuralfoil_rows = generate_neuralfoil(output_dir)
-    plot_neuralfoil(output_dir, neuralfoil_rows)
+    section_data, neuralfoil_rows = generate_neuralfoil(output_dir, parameters)
+    plot_neuralfoil(output_dir, neuralfoil_rows, parameters)
 
     xfoil_rows: list[dict] = []
     comparison_rows: list[dict] = []
     if args.xfoil:
         xfoil_rows, comparison_rows = generate_xfoil(
-            output_dir, args.xfoil, neuralfoil_rows
+            output_dir, args.xfoil, neuralfoil_rows, parameters
         )
-        plot_xfoil_comparison(output_dir, neuralfoil_rows, comparison_rows)
-    comparison_summary = summarize_comparison(comparison_rows)
+        plot_xfoil_comparison(output_dir, neuralfoil_rows, comparison_rows, parameters)
+    comparison_summary = summarize_comparison(comparison_rows, parameters)
     if comparison_summary:
         _write_csv(
             output_dir / "airfoil_polars_xfoil_summary.csv",
@@ -412,6 +465,7 @@ def main() -> None:
         )
 
     metadata = {
+        "geometry_configuration": args.geometry,
         "aerosandbox_version": asb.__version__,
         "neuralfoil_version": neuralfoil.__version__,
         "xfoil_command": args.xfoil,
@@ -420,6 +474,7 @@ def main() -> None:
                 "airfoil": data["airfoil_name"],
                 "chord_mm": data["chord_mm"],
                 "physical_trailing_edge_mm": data["te_thickness_mm"],
+                "thickness_scale": data["thickness_scale"],
                 "trailing_edge_ratio": data["te_thickness_mm"] / data["chord_mm"],
                 "coordinate_points": len(data["coordinates"]),
             }
