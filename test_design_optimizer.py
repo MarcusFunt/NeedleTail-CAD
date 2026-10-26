@@ -109,5 +109,21 @@ class DesignTest(unittest.TestCase):
         scores=[x["score_N"] for x in results if x["feasible"]]
         self.assertEqual(scores,sorted(scores,reverse=True))
 
+    def test_parametric_airframe_geometry_grid(self):
+        from airframe_geometry import PARAMETERS
+        from design_optimizer import airframes_from_grid
+        scenario=Settings(geometry_grid_mm={
+            "wing_root_chord":[55.,60.],
+            "horizontal_motor_offset":[100.,110.],
+        })
+        items=list(airframes_from_grid(PARAMETERS,scenario))
+        self.assertEqual(len(items),4)
+        self.assertEqual({p.wing_span for p,_ in items},{178.,198.})
+        self.assertEqual({p.wing_root_chord for p,_ in items},{55.,60.})
+        self.assertTrue(all(p.horizontal_motor_offset==mm["horizontal_motor_offset"]
+                            for p,mm in items))
+        with self.assertRaises(ValueError):
+            Settings(geometry_grid_mm={"unknown_dimension":[10.]})
+
 
 if __name__=="__main__":unittest.main()
