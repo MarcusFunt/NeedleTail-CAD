@@ -55,6 +55,8 @@ jobs:
 
       - name: Run geometry and STEP validation tests
         run: uv run --locked python -m unittest test_airframe_geometry -v
+      - name: Test configurable pusher/coaxial and flap CAD envelopes
+        run: uv run --locked python -m unittest test_design_cad -v
       - name: Report exact propeller-envelope clearance measurements
         run: uv run --locked python -c "from airframe_geometry import PARAMETERS; print('CAD_CLEARANCES_MM', PARAMETERS.propeller_clearance_report)"
       - name: Generate historical STEP under the same locked Python environment
@@ -101,6 +103,10 @@ jobs:
         run: uv sync --locked --extra aero
       - name: Run independent CAD / aero consistency and physics smoke tests
         run: uv run --locked --extra aero python -m unittest test_aero_consistency -v
+      - name: Test unified topology, flap optimization, and independent aero geometry
+        run: uv run --locked --extra aero python -m unittest test_design_optimizer test_design_aero -v
+      - name: Run unified optimizer smoke study
+        run: uv run --locked --extra aero python design_optimizer.py --settings design_optimizer_settings.json
       - name: Generate controlled historic-versus-current aerodynamic comparison
         run: uv run --locked --extra aero python compare_airframe_variants.py
       - name: Upload comparison data

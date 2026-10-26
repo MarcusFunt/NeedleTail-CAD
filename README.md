@@ -207,3 +207,18 @@ requires matched Gmsh meshing, consistent reference quantities and farfield,
 grid-convergence sweeps, and appropriate low-Reynolds transitional-flow
 validation. Do not infer improved cruise performance from volume or surface
 area alone.
+
+
+## Experimental unified propulsion and control-surface design study
+
+A new **opt-in** design space now includes `tractor4`, `pusher4`, `coaxial8` crossed with no flaps, 2 horizontal flaps, or all 4 flaps. All variants use the existing `AirframeParameters`. The original CAD/STEP build remains `tractor4 + none` by default.
+
+Start with [DESIGN_OPTIMIZATION.md](DESIGN_OPTIMIZATION.md), then:
+
+```powershell
+uv run --locked --extra aero python -m unittest -v test_design_optimizer
+uv run --locked --extra aero python design_optimizer.py --settings design_optimizer_settings.json
+uv run --locked --extra aero python design_optimizer.py --check-best-cad
+```
+
+The exploratory optimizer evaluates constrained control-moment allocation, actuator mass and incremental flap drag. **Its score is not an attainable-speed result.** New rear-motor packages and neutral-surface assembly STEP previews require explicit OCCT validation; they are not manufacturing-ready. The powered propeller/wake and full-moment trim models remain separate validation milestones.
