@@ -85,7 +85,7 @@ def build_variant_airplane(params, design: Design):
     if design.topology == "tractor4":
         nacelles = original.fuselages
     else:
-        profile = _nacelle_profile(params, design.topology)
+        profile = tuple(_nacelle_profile(params, design.topology))
         nacelles = [original.fuselages[0]]
         for name, y, z in motor_positions(params):
             nacelles.append(aero._make_fuselage(
