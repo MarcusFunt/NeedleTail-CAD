@@ -249,12 +249,20 @@ def airframes_from_grid(p, settings):
         yield candidate,updated
 
 
-def optimize(p, settings, derivative_provider=None):
+def optimize(p, settings, derivative_provider=None, geometry_configuration=None):
     """Search all nine mode families and optional CAD geometry dimensions.
 
     A validated derivative_provider(params, design) -> 3xN (Nm/radian)
     can replace the illustrative control proxy in each candidate.
     """
+    if geometry_configuration is None:
+        from airframe_geometry import AIRFOIL_CANDIDATE_PARAMETERS, PARAMETERS
+        geometry_configuration = (
+            "pr3_baseline" if p is PARAMETERS else
+            "airfoil_candidate" if p is AIRFOIL_CANDIDATE_PARAMETERS else "custom"
+        )
+    if not isinstance(geometry_configuration, str) or not geometry_configuration.strip():
+        raise ValueError("Geometry configuration must be a nonempty name")
     results=[]
     scenario_overrides=list(settings.mass_scenarios.items()) or [("default",{})]
     scenarios=[
@@ -269,6 +277,7 @@ def optimize(p, settings, derivative_provider=None):
                 result=evaluate(params,d,scenario_settings,derivatives=derivatives)
                 result["mass_scenario"]=scenario_name
                 result["scenario_rank"]=0
+                result["geometry_configuration"]=geometry_configuration
                 result["geometry_parameters_mm"]=changed_mm
                 rankings[scenario_name].append(result)
     for scenario_rows in rankings.values():
@@ -284,13 +293,25 @@ def optimize(p, settings, derivative_provider=None):
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--settings",type=Path)
-    parser.add_argument("--output-dir",type=Path,default=Path("tmp/design-optimizer"))
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--geometry",
+        choices=("pr3_baseline", "airfoil_candidate"),
+        default="pr3_baseline",
+        help="Named airframe geometry to optimize (the airfoil candidate is preliminary)",
+    )
     parser.add_argument("--experimental-aero-derivatives",action="store_true",
                         help="Slow unpowered AeroSandbox flap derivatives in CAD body axes")
     parser.add_argument("--check-best-cad",action="store_true",
                         help="Expensive exact CAD checks; report failure without hiding it")
     args=parser.parse_args(argv)
-    from airframe_geometry import PARAMETERS
+    from airframe_geometry import airframe_parameters_for_geometry
+    airframe = airframe_parameters_for_geometry(args.geometry)
+    output_dir = args.output_dir or (
+        Path("tmp/design-optimizer")
+        if args.geometry == "pr3_baseline"
+        else Path("tmp/design-optimizer") / args.geometry
+    )
     settings=Settings(**json.loads(args.settings.read_text())) if args.settings else Settings()
     provider=None
     if args.experimental_aero_derivatives:
@@ -307,8 +328,13 @@ def main(argv=None):
             # CAD +X forward, ASB +X aft: pseudovector moment transform.
             # Control polarity still requires physical verification.
             return _asb_moments_to_cad(moments_asb)
-    results=optimize(PARAMETERS,settings,derivative_provider=provider)
-    args.output_dir.mkdir(parents=True,exist_ok=True)
+    results=optimize(
+        airframe,
+        settings,
+        derivative_provider=provider,
+        geometry_configuration=args.geometry,
+    )
+    output_dir.mkdir(parents=True,exist_ok=True)
     if args.check_best_cad:
         from design_cad import validate_variant
         cad_cache={}
@@ -328,8 +354,12 @@ def main(argv=None):
                 "topology","flaps","hinge_fraction","flap_start_fraction",
                 "flap_end_fraction","flap_limit_deg","coaxial_separation_mm")})
             try:
-                airframe=replace(PARAMETERS,**row["geometry_parameters_mm"])
-                clear=validate_variant(airframe,choice,airframe.propeller_clearance_margin)
+                candidate_airframe=replace(airframe,**row["geometry_parameters_mm"])
+                clear=validate_variant(
+                    candidate_airframe,
+                    choice,
+                    candidate_airframe.propeller_clearance_margin,
+                )
                 validation={"cad_validated":True,
                             "minimum_cad_clearance_mm":min(clear.values()),
                             "cad_error":""}
@@ -337,15 +367,21 @@ def main(argv=None):
                 validation={"cad_validated":False,"cad_error":str(ex)}
             cad_cache[cad_key]=validation
             row.update(validation)
-    (args.output_dir/"designs.json").write_text(json.dumps(
-        {"assumptions":asdict(settings),"candidates":results},indent=2))
-    with (args.output_dir/"designs.csv").open("w",newline="") as f:
+    (output_dir/"designs.json").write_text(json.dumps(
+        {
+            "geometry_configuration": args.geometry,
+            "assumptions": asdict(settings),
+            "candidates": results,
+        },
+        indent=2,
+    ))
+    with (output_dir/"designs.csv").open("w",newline="") as f:
         columns=[k for k in results[0] if not isinstance(results[0][k],list)]
         writer=csv.DictWriter(f,fieldnames=columns,extrasaction="ignore")
         writer.writeheader()
         for row in results:
             writer.writerow({k:json.dumps(v) if isinstance(v,dict) else v for k,v in row.items()})
-    print(f"Compared {len(results)} configurations; results at {args.output_dir}")
+    print(f"Compared {len(results)} configurations; results at {output_dir}")
     leaders={row["mass_scenario"]:row for row in results if row["scenario_rank"]==1}
     print("Highest screening score by mass scenario (not a maximum-speed prediction):")
     print(json.dumps(leaders,indent=2))

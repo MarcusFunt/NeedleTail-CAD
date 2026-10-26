@@ -14,13 +14,14 @@ from design_configuration import Design, flap_segments, rotor_stations
 def _pod_shapes(p, d):
     from cadgen import build123d as bd
     from airframe_geometry import _motor_pod
+    from design_configuration import motor_positions
     pod = _motor_pod(p)
     # Rotating this axisymmetric pod 180 deg reverses its front/aft taper.
     rear_pod = bd.Rot(0, 180, 0) * pod
-    centers = ((p.motor_station_x, -p.horizontal_motor_offset, 0.),
-               (p.motor_station_x, p.horizontal_motor_offset, 0.),
-               (p.motor_station_x, 0., -p.vertical_motor_offset),
-               (p.motor_station_x, 0., p.vertical_motor_offset))
+    centers = tuple(
+        (p.motor_pod_center_x, y, z)
+        for _, y, z in motor_positions(p)
+    )
     out = []
     for i, pos in enumerate(centers):
         if d.topology != "pusher4":
@@ -74,13 +75,18 @@ def _split_flap_panels(p, d, wing, support, gap_mm=.35):
 
 
 def build_variant_components(params, design: Design):
+    from cadgen import build123d as bd
     from airframe_geometry import _fuselage, _wing, _vertical_support
     params.validate_motor_prop_interface()
     params.validate_arm_pod_fit()
     core = [_fuselage(params)]
     wings, panels = _split_flap_panels(params, design, _wing(params),
                                        _vertical_support(params))
-    return core + wings + panels + _pod_shapes(params, design)
+    translated_surfaces = [
+        bd.Pos(params.assembly_x_offset, 0, 0) * shape
+        for shape in wings + panels
+    ]
+    return core + translated_surfaces + _pod_shapes(params, design)
 
 
 def build_variant_assembly(params, design: Design):
