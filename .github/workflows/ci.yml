@@ -55,6 +55,8 @@ jobs:
 
       - name: Run geometry and STEP validation tests
         run: uv run --locked python -m unittest test_airframe_geometry -v
+      - name: Test configurable pusher/coaxial and flap CAD envelopes
+        run: uv run --locked python -m unittest test_design_cad -v
       - name: Report exact propeller-envelope clearance measurements
         run: uv run --locked python -c "from airframe_geometry import PARAMETERS; print('CAD_CLEARANCES_MM', PARAMETERS.propeller_clearance_report)"
       - name: Generate historical STEP under the same locked Python environment
