@@ -1,0 +1,17 @@
+{
+  "speed_mps": 30.0,
+  "rho_kg_m3": 1.225,
+  "per_rotor_thrust_N": 1.0,
+  "reaction_torque_per_thrust_m": 0.004,
+  "coaxial_pair_efficiency": 0.85,
+  "installed_pusher_efficiency": 1.0,
+  "flap_lift_slope_per_rad": 1.9,
+  "flap_gap_cd": 0.006,
+  "flap_drag_k": 0.11,
+  "required_roll_Nm": 0.003,
+  "required_pitch_Nm": 0.006,
+  "required_yaw_Nm": 0.006,
+  "servo_mass_g": 2.5,
+  "weight_penalty_fraction": 0.08,
+  "require_modelled_control": true
+}
