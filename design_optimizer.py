@@ -13,7 +13,7 @@ import argparse
 import csv
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 from itertools import product
 from pathlib import Path
 
@@ -44,6 +44,7 @@ class Settings:
     # speed; not a physically solved change in flight trim.
     weight_penalty_fraction: float = .08
     require_modelled_control: bool = True
+    geometry_grid_mm: dict[str, list[float]] = field(default_factory=dict)
 
     def __post_init__(self):
         for key,value in asdict(self).items():
@@ -51,6 +52,14 @@ class Settings:
                 raise ValueError(f"Nonfinite/negative setting: {key}")
         if not .5<=self.coaxial_pair_efficiency<=1.0:raise ValueError("Coaxial ratio out of bounds")
         if not .5<=self.installed_pusher_efficiency<=1.5:raise ValueError("Pusher ratio out of bounds")
+        allowed = {"wing_root_chord","wing_tip_chord","horizontal_motor_offset",
+                   "vertical_motor_offset","fuselage_length"}
+        if not set(self.geometry_grid_mm).issubset(allowed):
+            raise ValueError("Unknown geometry sweep parameter")
+        if any(not isinstance(v,list) or not v or
+               any(not isinstance(x,(float,int)) or not math.isfinite(x) or x<=0 for x in v)
+               for v in self.geometry_grid_mm.values()):
+            raise ValueError("Geometry grids require nonempty lists of positive dimensions")
         if not (0<self.per_rotor_thrust_N and 0<self.rho_kg_m3):
             raise ValueError("Unphysical rotor limit or density")
 
@@ -164,9 +173,40 @@ def candidate_designs():
                              flap_start_fraction=start,flap_limit_deg=limit)
 
 
-def optimize(p, settings):
-    """Deterministic mixed discrete/continuous grid, all nine design families."""
-    results=[evaluate(p,d,settings) for d in candidate_designs()]
+def airframes_from_grid(p, settings):
+    """Generate geometric candidates directly from AirframeParameters."""
+    if not settings.geometry_grid_mm:
+        yield p, {}
+        return
+    if not hasattr(p, "__dataclass_fields__"):
+        raise TypeError("Geometry grid requires the real AirframeParameters dataclass")
+    keys=tuple(sorted(settings.geometry_grid_mm))
+    for values in product(*(settings.geometry_grid_mm[k] for k in keys)):
+        updated=dict(zip(keys,values))
+        candidate=replace(p,**updated)
+        if candidate.wing_root_chord<=candidate.wing_tip_chord:
+            continue
+        try:
+            candidate.validate_arm_pod_fit()
+            candidate.validate_motor_prop_interface()
+        except ValueError:
+            continue
+        yield candidate,updated
+
+
+def optimize(p, settings, derivative_provider=None):
+    """Search all nine mode families and optional CAD geometry dimensions.
+
+    A validated derivative_provider(params, design) -> 3xN (Nm/radian)
+    can replace the illustrative control proxy in each candidate.
+    """
+    results=[]
+    for params, changed_mm in airframes_from_grid(p,settings):
+        for d in candidate_designs():
+            derivatives=derivative_provider(params,d) if derivative_provider else None
+            result=evaluate(params,d,settings,derivatives=derivatives)
+            result["geometry_parameters_mm"]=changed_mm
+            results.append(result)
     return sorted(results,key=lambda row:(row["feasible"],
                    row["score_N"] if row["score_N"] is not None else -math.inf),
                   reverse=True)
@@ -190,7 +230,8 @@ def main(argv=None):
                 "topology","flaps","hinge_fraction","flap_start_fraction",
                 "flap_end_fraction","flap_limit_deg","coaxial_separation_mm")})
             try:
-                clear=validate_variant(PARAMETERS,choice,PARAMETERS.propeller_clearance_margin)
+                airframe=replace(PARAMETERS,**row["geometry_parameters_mm"])
+                clear=validate_variant(airframe,choice,airframe.propeller_clearance_margin)
                 row["cad_validated"]=True
                 row["minimum_cad_clearance_mm"]=min(clear.values())
             except (ValueError,RuntimeError) as ex:
