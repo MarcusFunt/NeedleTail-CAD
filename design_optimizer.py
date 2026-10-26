@@ -136,7 +136,7 @@ def evaluate(p, design:Design, settings:Settings, derivatives=None):
               n_motors=len(motor_bounds),n_flaps=len(panels),
               added_mass_g=mass,
               speed_mps=settings.speed_mps,
-              control_model=("measured_derivatives" if derivatives is not None else
+              control_model=("supplied_derivatives_experimental" if derivatives is not None else
                              "assumed_proxy" if settings.require_modelled_control else "zero"),
               cad_validated=False, propeller_map_validated=False)
     if not res.success:
@@ -216,12 +216,29 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--settings",type=Path)
     parser.add_argument("--output-dir",type=Path,default=Path("tmp/design-optimizer"))
+    parser.add_argument("--experimental-aero-derivatives",action="store_true",
+                        help="Slow unpowered AeroSandbox flap derivatives; signs not validated")
     parser.add_argument("--check-best-cad",action="store_true",
                         help="Expensive exact CAD checks; report failure without hiding it")
     args=parser.parse_args(argv)
     from airframe_geometry import PARAMETERS
     settings=Settings(**json.loads(args.settings.read_text())) if args.settings else Settings()
-    results=optimize(PARAMETERS,settings)
+    provider=None
+    if args.experimental_aero_derivatives:
+        from design_aero import flap_derivatives
+        from design_configuration import flap_segments
+        def provider(params, design):
+            if design.flaps == "none":
+                return np.zeros((3,0))
+            names, moments_asb = flap_derivatives(
+                params,design,speed_mps=max(settings.speed_mps,.1))
+            wanted=[seg[0] for seg in flap_segments(params,design)]
+            if names != wanted:
+                raise ValueError(f"Flap order mismatch: {names} != {wanted}")
+            # CAD +X forward, ASB +X aft: pseudovector moment transform.
+            # This mapping and control polarity MUST be verified physically.
+            return np.diag([1.,-1.,-1.]) @ moments_asb
+    results=optimize(PARAMETERS,settings,derivative_provider=provider)
     args.output_dir.mkdir(parents=True,exist_ok=True)
     if args.check_best_cad:
         from design_cad import validate_variant
