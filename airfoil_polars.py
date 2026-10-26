@@ -1,4 +1,4 @@
-"""Generate geometry-matched SD7003 and SD8020 airfoil polars.
+"""Generate geometry-matched airfoil polars for the selected catalog profiles.
 
 Requires AeroSandbox (which includes NeuralFoil). XFOIL is optional and must
 be installed separately; pass its executable with ``--xfoil`` to generate the
@@ -54,6 +54,9 @@ def _geometry_matched_airfoil(section_name: str, airfoil_name: str, chord_mm: fl
         PARAMETERS.wing_trailing_edge
         if section_name.startswith("wing_")
         else PARAMETERS.support_trailing_edge,
+        thickness_scale=PARAMETERS.wing_thickness_scale
+        if section_name.startswith("wing_")
+        else PARAMETERS.support_thickness_scale,
     )
     # _section_coordinates returns LE-to-TE upper and lower surfaces. Store a
     # standard airfoil contour from upper TE, over the leading edge, to lower
@@ -95,6 +98,9 @@ def generate_neuralfoil(output_dir: Path):
             "coordinates": coordinates,
             "airfoil_name": airfoil_name,
             "chord_mm": chord_mm,
+            "thickness_scale": PARAMETERS.wing_thickness_scale
+            if section_name.startswith("wing_")
+            else PARAMETERS.support_thickness_scale,
             "te_thickness_mm": te_thickness_mm,
         }
         _write_airfoil_dat(
@@ -420,6 +426,7 @@ def main() -> None:
                 "airfoil": data["airfoil_name"],
                 "chord_mm": data["chord_mm"],
                 "physical_trailing_edge_mm": data["te_thickness_mm"],
+                "thickness_scale": data["thickness_scale"],
                 "trailing_edge_ratio": data["te_thickness_mm"] / data["chord_mm"],
                 "coordinate_points": len(data["coordinates"]),
             }

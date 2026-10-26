@@ -31,6 +31,8 @@ from airframe_geometry import (
     AirframeParameters,
     _sample_spline_radius_profile,
     _section_coordinates,
+    fuselage_radius_stations,
+    motor_pod_radius_stations,
 )
 
 
@@ -44,11 +46,14 @@ ALTITUDE_M = 0.0
 N_CRIT = 9.0
 
 
-def _airfoil_for_section(name: str, airfoil_name: str, chord_mm: float, te_mm: float):
-    upper, lower = _section_coordinates(airfoil_name, chord_mm, te_mm)
+def _airfoil_for_section(
+    name: str, airfoil_name: str, chord_mm: float, te_mm: float,
+    thickness_scale: float = 1.0,
+):
+    upper, lower = _section_coordinates(airfoil_name, chord_mm, te_mm, thickness_scale)
     # AeroSandbox expects an airfoil contour ordered upper TE -> LE -> lower TE.
     coordinates = np.asarray(list(reversed(upper)) + lower[1:], dtype=float)
-    return asb.Airfoil(name=f"{name}_{airfoil_name}_CAD_TE", coordinates=coordinates)
+    return asb.Airfoil(name=f"{name}_{airfoil_name}_t{thickness_scale:g}_CAD_TE", coordinates=coordinates)
 
 
 def _vertical_airfoil(airfoil: asb.Airfoil, name: str) -> asb.Airfoil:
@@ -61,28 +66,21 @@ def _vertical_airfoil(airfoil: asb.Airfoil, name: str) -> asb.Airfoil:
 
 
 def _fuselage_profile(params: AirframeParameters) -> tuple[tuple[float, float], ...]:
-    half_length = params.fuselage_length / 2
-    aft_x = -half_length
-    nose_x = half_length
-    max_x = nose_x - params.fuselage_max_station_from_nose * params.fuselage_length
-    aft = [
-        (aft_x + fraction * (max_x - aft_x), ratio * params.fuselage_max_radius)
-        for fraction, ratio in params.fuselage_aft_radius_profile
-    ]
-    fore = [
-        (max_x + fraction * (nose_x - max_x), ratio * params.fuselage_max_radius)
-        for fraction, ratio in params.fuselage_fore_radius_profile[1:]
-    ]
-    return tuple(aft + fore)
+    return fuselage_radius_stations(params)
 
 
 def _pod_profile(params: AirframeParameters) -> tuple[tuple[float, float], ...]:
-    half_length = params.motor_pod_length / 2
-    max_radius = params.motor_pod_diameter / 2
-    return tuple(
-        (fraction * params.motor_pod_length, ratio * max_radius)
-        for fraction, ratio in params.motor_pod_radius_profile
-    )
+    full_profile = motor_pod_radius_stations(params)
+    if params.motor_pod_body_airfoil is not None:
+        return full_profile
+    sampled = _sample_spline_radius_profile(full_profile)
+    mount_x = params.motor_mount_face_offset_from_pod_center
+    sampled_x = np.asarray([x for x, _ in sampled], dtype=float)
+    sampled_radii = np.asarray([radius for _, radius in sampled], dtype=float)
+    mount_radius = float(np.interp(mount_x, sampled_x, sampled_radii))
+    clipped = [station for station in full_profile if station[0] < mount_x]
+    clipped.append((mount_x, mount_radius))
+    return tuple(clipped)
 
 
 def _sample_profile(
@@ -108,10 +106,11 @@ def _make_fuselage(
     center_x_mm: float = 0.0,
     center_y_m: float = 0.0,
     center_z_m: float = 0.0,
+    sample_count: int = 25,
 ) -> asb.Fuselage:
     # The project profile runs aft -> nose in +X; reverse it so ASB sections run
     # nose -> tail in +X_aft, preserving monotonically increasing ASB x.
-    sections = _sample_profile(profile, count=25)
+    sections = _sample_profile(profile, count=sample_count)
     return asb.Fuselage(
         name=name,
         xsecs=[
@@ -124,19 +123,24 @@ def _make_fuselage(
     )
 
 
-def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
+def build_airplane(
+    params: AirframeParameters = PARAMETERS, *, body_sample_count: int = 25,
+) -> asb.Airplane:
     """Build an AeroSandbox model from the shared CAD parameters."""
     wing_root_airfoil = _airfoil_for_section(
-        "wing_root", params.wing_airfoil, params.wing_root_chord, params.wing_trailing_edge
+        "wing_root", params.wing_airfoil, params.wing_root_chord, params.wing_trailing_edge,
+        params.wing_thickness_scale,
     )
     wing_tip_airfoil = _airfoil_for_section(
-        "wing_tip", params.wing_airfoil, params.wing_tip_chord, params.wing_trailing_edge
+        "wing_tip", params.wing_airfoil, params.wing_tip_chord, params.wing_trailing_edge,
+        params.wing_thickness_scale,
     )
     support_section = _airfoil_for_section(
         "vertical_support",
         params.support_airfoil,
         params.support_chord,
         params.support_trailing_edge,
+        params.support_thickness_scale,
     )
     support_airfoil = _vertical_airfoil(
         support_section, f"vertical_support_{params.support_airfoil}_CAD_TE_oriented"
@@ -149,16 +153,16 @@ def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
     support_chord_m = params.support_chord / 1000
 
     horizontal_wing = asb.Wing(
-        name="Horizontal wing (CAD-matched SD7003)",
+        name=f"Horizontal wing (CAD-matched {params.wing_airfoil})",
         symmetric=True,
         xsecs=[
             asb.WingXSec(
-                xyz_le=[_asb_x(wing_root_chord_m * 500), 0, 0],
+                xyz_le=[_asb_x(params.assembly_x_offset + params.wing_root_chord / 2), 0, 0],
                 chord=wing_root_chord_m,
                 airfoil=wing_root_airfoil,
             ),
             asb.WingXSec(
-                xyz_le=[_asb_x(wing_tip_chord_m * 500), half_wing_span_m, 0],
+                xyz_le=[_asb_x(params.assembly_x_offset + params.wing_tip_chord / 2), half_wing_span_m, 0],
                 chord=wing_tip_chord_m,
                 airfoil=wing_tip_airfoil,
             ),
@@ -166,18 +170,18 @@ def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
     )
 
     vertical_support = asb.Wing(
-        name="Vertical support (CAD-matched SD8020)",
+        name=f"Vertical support (CAD-matched {params.support_airfoil})",
         symmetric=False,
         # The single continuous span runs from the lower to upper tip. The
         # profile is reflected above so its physical thickness remains +Y.
         xsecs=[
             asb.WingXSec(
-                xyz_le=[_asb_x(support_chord_m * 500), 0, -half_support_span_m],
+                xyz_le=[_asb_x(params.assembly_x_offset + params.support_chord / 2), 0, -half_support_span_m],
                 chord=support_chord_m,
                 airfoil=support_airfoil,
             ),
             asb.WingXSec(
-                xyz_le=[_asb_x(support_chord_m * 500), 0, half_support_span_m],
+                xyz_le=[_asb_x(params.assembly_x_offset + params.support_chord / 2), 0, half_support_span_m],
                 chord=support_chord_m,
                 airfoil=support_airfoil,
             ),
@@ -186,22 +190,23 @@ def build_airplane(params: AirframeParameters = PARAMETERS) -> asb.Airplane:
 
     pod_profile = _pod_profile(params)
     pod_centers = (
-        (params.motor_station_x, -params.horizontal_motor_offset, 0),
-        (params.motor_station_x, params.horizontal_motor_offset, 0),
-        (params.motor_station_x, 0, -params.vertical_motor_offset),
-        (params.motor_station_x, 0, params.vertical_motor_offset),
+        (params.motor_pod_center_x, -params.horizontal_motor_offset, 0),
+        (params.motor_pod_center_x, params.horizontal_motor_offset, 0),
+        (params.motor_pod_center_x, 0, -params.vertical_motor_offset),
+        (params.motor_pod_center_x, 0, params.vertical_motor_offset),
     )
     fuselages = [
-        _make_fuselage("Central fuselage", _fuselage_profile(params)),
+        _make_fuselage("Central fuselage", _fuselage_profile(params), sample_count=body_sample_count),
         *[
             _make_fuselage(
                 f"Motor pod {index + 1}",
                 pod_profile,
-                center_x_mm=params.motor_station_x,
+                center_x_mm=x_mm,
                 center_y_m=y_mm / 1000,
                 center_z_m=z_mm / 1000,
+                sample_count=body_sample_count,
             )
-            for index, (_, y_mm, z_mm) in enumerate(pod_centers)
+            for index, (x_mm, y_mm, z_mm) in enumerate(pod_centers)
         ],
     ]
 
@@ -479,10 +484,11 @@ def run(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict:
             "mapping": "x_asb = -x_project / 1000; y_asb = y_project / 1000; z_asb = z_project / 1000",
         },
         "geometry_matches": {
-            "horizontal_wing": f"{params.wing_airfoil}, root {params.wing_root_chord:g} mm / tip {params.wing_tip_chord:g} mm, physical TE {params.wing_trailing_edge:g} mm",
-            "vertical_support": f"{params.support_airfoil}, {params.support_chord:g} mm, physical TE {params.support_trailing_edge:g} mm",
-            "fuselage": "25 axial samples from the CAD profile spline",
-            "motor_pods": "four CAD-profile bodies, each with 25 axial samples",
+            "arm_assembly_x_offset_mm": params.assembly_x_offset,
+            "horizontal_wing": f"{params.wing_airfoil} derivative, thickness scale {params.wing_thickness_scale:g}, root {params.wing_root_chord:g} mm / tip {params.wing_tip_chord:g} mm, physical TE {params.wing_trailing_edge:g} mm",
+            "vertical_support": f"{params.support_airfoil} derivative, thickness scale {params.support_thickness_scale:g}, {params.support_chord:g} mm, physical TE {params.support_trailing_edge:g} mm",
+            "fuselage": f"{params.fuselage_body_airfoil or 'custom'}-derived meridian; 25 axial samples from the CAD spline",
+            "motor_pods": f"{params.motor_pod_body_airfoil or 'custom'}-derived afterbodies; 25 CAD spline samples each",
         },
         "reference_values": {
             "area_m2": params.wing_planform_area / 1_000_000,

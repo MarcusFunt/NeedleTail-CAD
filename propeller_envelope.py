@@ -14,11 +14,8 @@ def build_propeller_envelopes(
     airframe.validate_arm_pod_fit()
     airframe.validate_propeller_clearance()
     plane_x = airframe.prop_hub_center_x
-    stations = (
-        (plane_x, -airframe.horizontal_motor_offset, 0),
-        (plane_x, airframe.horizontal_motor_offset, 0),
-        (plane_x, 0, -airframe.vertical_motor_offset),
-        (plane_x, 0, airframe.vertical_motor_offset),
+    stations = tuple(
+        (plane_x, y, z) for y, z in airframe.propeller_mount_stations
     )
     disks = []
     for index, (x, y, z) in enumerate(stations, start=1):

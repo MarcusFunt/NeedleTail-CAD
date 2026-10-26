@@ -1,8 +1,8 @@
-"""Build one XING2 1404 plus 3x4 prop reference at the +Y motor station.
+"""Build a centered XING2 1404 and 3x4 prop reference at the +Y station.
 
-The motor and prop remain separate solids in an assembly Compound so the
-shaft-to-hub interface can be inspected. This is a packaging reference, not a
-manufacturer fit check or flight-ready propeller model.
+The pod, motor, and prop remain separate solids in an assembly Compound so the
+mounting and shaft-to-hub interfaces can be inspected. This is a packaging
+reference, not a manufacturer fit check or flight-ready propeller model.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 from cadgen import build123d as bd
 from cadgen import step
 
-from airframe_geometry import PARAMETERS
+from airframe_geometry import PARAMETERS, build_motor_pod
 
 
 REFERENCE_DIR = Path(__file__).resolve().parent / "references" / "propeller-kit" / "STEP"
@@ -20,7 +20,7 @@ PROP_FILE = REFERENCE_DIR / "PROP_3x4_2B_CW.step"
 
 
 def build_motor_prop_installation():
-    """Place a reference motor/prop pair at the +Y wing station."""
+    """Place a reference motor/prop pair on the +Y pod's forward mount face."""
     params = PARAMETERS
     params.validate_motor_prop_interface()
     missing = [path.name for path in (MOTOR_FILE, PROP_FILE) if not path.is_file()]
@@ -33,23 +33,24 @@ def build_motor_prop_installation():
     prop = bd.import_step(str(PROP_FILE))
     shaft_to_aircraft_x = bd.Rot(0, 90, 0)
     y = params.horizontal_motor_offset
+    motor_z = params.motor_axis_z_offset_from_pod_center
+    pod_placed = bd.Pos(params.motor_pod_center_x, y, 0) * build_motor_pod(params)
 
-    # The reference motor STEP uses local +Z as the shaft axis. The hub center
-    # is located 18.5 mm ahead of the mount face, keeping its rear face flush
-    # with the rounded pod nose at +X.
+    # The motor's local +Z shaft axis is mapped onto aircraft +X. Its mount face
+    # sits on the pod's flat +X end, ahead of the wing leading edge.
     motor_placed = (
-        bd.Pos(params.motor_mount_face_x, y, 0)
+        bd.Pos(params.motor_mount_face_x, y, motor_z)
         * shaft_to_aircraft_x
         * motor
     )
     prop_placed = (
-        bd.Pos(params.prop_hub_center_x, y, 0)
+        bd.Pos(params.prop_hub_center_x, y, motor_z)
         * shaft_to_aircraft_x
         * prop
     )
 
-    assembly = bd.Compound(children=[motor_placed, prop_placed])
-    assembly.label = "xing2_1404_plus_prop_3x4_reference"
+    assembly = bd.Compound(children=[pod_placed, motor_placed, prop_placed])
+    assembly.label = "motor_pod_with_xing2_1404_and_prop_3x4"
     return assembly
 
 
