@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "bundle_filename": "NeedleTail_Integration_Plan_and_Validation_Bundles_2026-10-29.zip",
+  "bundle_size_bytes": 1472070,
+  "bundle_sha256": "b11fcbcf33b3897e68fa4789361713aa0bc3b93228e8fce50f3dda117f1b5f40",
+  "contains_nested_archives": false,
+  "source_roots": [
+    "NeedleTail_Isolated_Propeller_Validation_2026-10-27",
+    "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28"
+  ],
+  "source_member_count": 62,
+  "source_members": [
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/README.md",
+      "size_bytes": 8178,
+      "sha256": "bc1b753536c285035082a7ce092f08d7f4bfc0a380c1c780c8e6bcd005560b50"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/reproduce.py",
+      "size_bytes": 9188,
+      "sha256": "67ce5805c1ff3893ed0768df504b2b4b7d2e729a276ac625e5e340c1594e7791"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/test_physics.py",
+      "size_bytes": 1545,
+      "sha256": "40879ed2e96f3339b381182853d1757a1f11068445438e0740418cfaac607d09"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/gwsdd_3x2_geometry.csv",
+      "size_bytes": 368,
+      "sha256": "0d4e855c17bb4e047c6642d1d5cfb830f82413bd71a0c77e884b46dbfbfb5510"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/gwsdd_3x2_static_uiuc.csv",
+      "size_bytes": 470,
+      "sha256": "c08c497aa416138466f583cc828963b13952245f5e1ba2454e5be28d69a6fb5f"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/cox_dantsker_2026_table2.csv",
+      "size_bytes": 298,
+      "sha256": "246d675f13f7f699c4b680c2e808086566b4c3d3bfd62cd9711ab9ff1866d35b"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/results/uiuc_bemt_vs_measured.csv",
+      "size_bytes": 4038,
+      "sha256": "f9650eacf4d0be886e9fc0f0eb9d1fa497ec068865da01fa1ec968f6e27bac55"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/results/cox2026_reconstructed_reference.csv",
+      "size_bytes": 652,
+      "sha256": "dfd0296dd637af5a811db86396f85501b3ba56790fb8d52e801965bd70530af0"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/results/bemt_sensitivity.csv",
+      "size_bytes": 1053,
+      "sha256": "74745daaf7512798e4fe7edfb6aec3b008d01a99ddf549a05a0221979e702f33"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/results/summary.json",
+      "size_bytes": 1346,
+      "sha256": "a2ad4f40f6b195f8709ae1a869922768e86b255579bd8130ab302f0e05c92f80"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/results/gws_3x2_CT_comparison.png",
+      "size_bytes": 88392,
+      "sha256": "5ecd356536bec92b7403bff36c81c2ed92bce92dadb0b3b029e80e67b47ad052"
+    },
+    {
+      "path": "NeedleTail_Isolated_Propeller_Validation_2026-10-27/results/gws_3x2_CP_comparison.png",
+      "size_bytes": 97999,
+      "sha256": "c68c73afce101157ace62196d6ea8b57bbe9ca653d2e17d3a5ae1f4f9cf576cf"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/test_benchmark.py",
+      "size_bytes": 2522,
+      "sha256": "23c6b9785c906cb0da194e04263d43da79f35d6e1e93e8266556eba1d44a7974"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/produce_outputs.py",
+      "size_bytes": 12309,
+      "sha256": "74c7e68d51514249e17263953dbbd89078769cc94e846e4c97eca2ae9e92cc1d"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/benchmark.py",
+      "size_bytes": 9371,
+      "sha256": "dc2d9f3b944a954b74a7cdfcc5352fd67256dc9b151129e198ff7a8b8db8295f"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/VALIDATION_REPORT.md",
+      "size_bytes": 6969,
+      "sha256": "e72214a2ba6ffe1487ce59e103ddaf08bf5d8cd801738033dd3bb8880b33bd91"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/apcff_4p2x4_geom.txt",
+      "size_bytes": 324,
+      "sha256": "1030aaf94f69c1a5bb991cb575a045a0c09c60f8b0da03e1040efd411cf4e4c1"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_4x4_forward.txt",
+      "size_bytes": 370,
+      "sha256": "19b79c8e15624a7795ea2c2ed54216aec67239226b40facfda1a91fa40524025"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_3x3_geom.txt",
+      "size_bytes": 324,
+      "sha256": "dfc604beb565ca9d2571fe43064b54310f51915928b90c8094e5a0d83c31d7c8"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_2p5x0p8_geom.txt",
+      "size_bytes": 316,
+      "sha256": "9adb2e1bef2ff85ef2d512ffa0989d66cdb0604c5ceda0413559b39314a736b2"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_3x3_static.txt",
+      "size_bytes": 340,
+      "sha256": "7f862b80da1ba77ed7c7f053c11f22aaa64ae0ff3f7f05891aaf0f72625d0379"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_3x2_forward.txt",
+      "size_bytes": 620,
+      "sha256": "3672816ae7f669c0a5c6c5d9863240e03832788c6f36678c0f879dd3b7750e52"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/apcsp_4p2x2_geom.txt",
+      "size_bytes": 323,
+      "sha256": "c99ea92409eb2b5c060587ef88e9d49ad91593bc7d0dd2c5b04ebc921e5ac0ae"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_2p5x0p8_forward.txt",
+      "size_bytes": 472,
+      "sha256": "1bdf07ed324a42ee26bcdff11d66222438f016351f211396afc80f83c49cce31"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_4x4_static.txt",
+      "size_bytes": 462,
+      "sha256": "293067a2ddb5486f9f779b72a49b80b42485916c0ee844d72327bdf210aef48c"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/apcsp_4p2x2_static.txt",
+      "size_bytes": 365,
+      "sha256": "d2cdcc88a655182b77c36908117fa6cd78a1203dadb915db814ffe01be1c4427"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/apcff_4p2x4_static.txt",
+      "size_bytes": 460,
+      "sha256": "b37ba6ef0c58ae6674f491ed6682c616fd3dfc1f85f9bc0a48b6c3774ee969a2"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_2p5x0p8_static.txt",
+      "size_bytes": 626,
+      "sha256": "f0f99edc4f94bd2a2e16696825e28bfcb4928f3aef2961c79882b0a0810d1ec1"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/apcsp_4p2x2_forward.txt",
+      "size_bytes": 334,
+      "sha256": "0c993383694316f59857447a491ffaab8c3a16eaf01b2eaa31af6177dc25a9f7"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/apcff_4p2x4_forward.txt",
+      "size_bytes": 630,
+      "sha256": "4c46bee1666de2a7e892f1fe2f6c5c1b99694a98db9a2424dd976c7bcf2fe66b"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_3x3_forward.txt",
+      "size_bytes": 622,
+      "sha256": "74e8ef43a2a06d3bf5ad387e892ce7053b5137e08dcf69b1f85a73bbfffcd36e"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/data/gwsdd_4x4_geom.txt",
+      "size_bytes": 324,
+      "sha256": "d9bdb933a5df4d4b8aa8828384aa4eb613ccae6013f2a542b3fb3dea45081ed7"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_2p5x0p8_forward_CT.png",
+      "size_bytes": 75495,
+      "sha256": "88cbb2fd52e787a05d59f705f936ce397c2d8176432bdd9614e13c7d972e2383"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/apcsp_4p2x2_forward_CP.png",
+      "size_bytes": 74736,
+      "sha256": "4b5eb3895cae09062b6cb557e0634719d9eab456ffff6bbb380ff3eadc74c1f5"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_3x2_forward_CP.png",
+      "size_bytes": 76679,
+      "sha256": "5c562f60b6b11a1d0c4b07afb07cf7883669a7f190061ccd8a93d6b34482ee9a"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/apcff_4p2x4_forward_CP.png",
+      "size_bytes": 80028,
+      "sha256": "619bb618de9266af66ce9c5a5a91297bfff5e0fb3c8a2b93d5fd720291bec8eb"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/summary_by_propeller.csv",
+      "size_bytes": 4565,
+      "sha256": "849956df5f0cc0dd1d12cbae73d6da86c32ba436603a90e6dd477befe851c807"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_2p5x0p8_forward_CP.png",
+      "size_bytes": 68807,
+      "sha256": "b6c099a24bc6616af16ead39cd95672afe0f97ed272f6c4a5f8e467004d6e970"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_4x4_forward_CP.png",
+      "size_bytes": 82610,
+      "sha256": "d59b912f304be87b5cb76fd94719eba9ce3b2419e521a1fcd9399d926a753081"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/run_stdout.txt",
+      "size_bytes": 1643,
+      "sha256": "70e775b2f6e75f0bdd8838cb1fdca36fc8d7a98f417de49b53b4468887b00a8c"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_3x3_forward_CP.png",
+      "size_bytes": 82396,
+      "sha256": "b7c2d3781d9064bb55a606c7ac9e75fc11936cbca908c91c6e6714cbc791a469"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_3x2_forward_CT.png",
+      "size_bytes": 82329,
+      "sha256": "6070193c45a0288f85b91065167652e9f5a89b65a6ffa22cd0c7aa5a56f85088"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/apcff_4p2x4_forward_CT.png",
+      "size_bytes": 82949,
+      "sha256": "e03f2251cd658f68a6d5dad794ca0d348338dc7f4d359a39a14b1232efb0bb77"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_3x3_forward_CT.png",
+      "size_bytes": 78277,
+      "sha256": "b1d12bcb66c0377f019197a4467e11038ec09b02662c8ba9910af8ba2b97a2b1"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/source_manifest.json",
+      "size_bytes": 4696,
+      "sha256": "1b855aa0f1a0fd025ae7318ec3600fad7f0f7f2d3e28d7fecd735304325a0ad2"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/apcsp_4p2x2_forward_CT.png",
+      "size_bytes": 77942,
+      "sha256": "52ee0406e80f7a92489737762c0d636004489c915e2f722b5911ef2d7a7423a6"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/gwsdd_4x4_forward_CT.png",
+      "size_bytes": 79113,
+      "sha256": "bc3de0a0a52eebc0f816389ee35079bd222d1806967603289b56c7581976765d"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/all_cases.csv",
+      "size_bytes": 72959,
+      "sha256": "b85b01c6244dbd8e749dbbef165afa88b6c56c43aeb38f6ec475824e38bc935d"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/static_mape.png",
+      "size_bytes": 102086,
+      "sha256": "8d10cda698acae39d06fb882ba20b7cac0b87d9cfdc92e709d08a43e69a17562"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/results/forward_mae.png",
+      "size_bytes": 114685,
+      "sha256": "2895132bd4182a6936d31b295f0a2487230560a54340c5070b47c582e28d3fb5"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/gwsdd_3x2_geometry.csv",
+      "size_bytes": 368,
+      "sha256": "0d4e855c17bb4e047c6642d1d5cfb830f82413bd71a0c77e884b46dbfbfb5510"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/README.md",
+      "size_bytes": 8178,
+      "sha256": "bc1b753536c285035082a7ce092f08d7f4bfc0a380c1c780c8e6bcd005560b50"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/cox_dantsker_2026_table2.csv",
+      "size_bytes": 298,
+      "sha256": "246d675f13f7f699c4b680c2e808086566b4c3d3bfd62cd9711ab9ff1866d35b"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/gwsdd_3x2_static_uiuc.csv",
+      "size_bytes": 470,
+      "sha256": "c08c497aa416138466f583cc828963b13952245f5e1ba2454e5be28d69a6fb5f"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/reproduce.py",
+      "size_bytes": 9188,
+      "sha256": "67ce5805c1ff3893ed0768df504b2b4b7d2e729a276ac625e5e340c1594e7791"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/test_physics.py",
+      "size_bytes": 1545,
+      "sha256": "40879ed2e96f3339b381182853d1757a1f11068445438e0740418cfaac607d09"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/results/gws_3x2_CT_comparison.png",
+      "size_bytes": 88392,
+      "sha256": "5ecd356536bec92b7403bff36c81c2ed92bce92dadb0b3b029e80e67b47ad052"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/results/summary.json",
+      "size_bytes": 1346,
+      "sha256": "a2ad4f40f6b195f8709ae1a869922768e86b255579bd8130ab302f0e05c92f80"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/results/cox2026_reconstructed_reference.csv",
+      "size_bytes": 652,
+      "sha256": "dfd0296dd637af5a811db86396f85501b3ba56790fb8d52e801965bd70530af0"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/results/bemt_sensitivity.csv",
+      "size_bytes": 1053,
+      "sha256": "74745daaf7512798e4fe7edfb6aec3b008d01a99ddf549a05a0221979e702f33"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/results/gws_3x2_CP_comparison.png",
+      "size_bytes": 97999,
+      "sha256": "c68c73afce101157ace62196d6ea8b57bbe9ca653d2e17d3a5ae1f4f9cf576cf"
+    },
+    {
+      "path": "NeedleTail_Frozen_BEMT_MultiProp_ForwardFlight_Validation_2026-10-28/needletail_prop_validation/results/uiuc_bemt_vs_measured.csv",
+      "size_bytes": 4038,
+      "sha256": "f9650eacf4d0be886e9fc0f0eb9d1fa497ec068865da01fa1ec968f6e27bac55"
+    }
+  ]
+}
