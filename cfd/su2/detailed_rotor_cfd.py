@@ -31,6 +31,7 @@ from airframe_geometry import (
     airframe_parameters_for_geometry,
 )
 import configure_rotor_case
+from design_configuration import moment_about_shaft_axis
 
 SPEED = 15.0
 ALPHA = 4.0
@@ -97,11 +98,7 @@ def campaign_configuration(geometry: str, revolutions: int,
         "reference_length_m": mac,
         "mesh_levels": [1.0, 0.75],
         "time_steps_per_revolution": [120, 120, 240],
-        "modeling_approximations": [
-            "Airframe OML patches intersecting rotor zones are treated as rotor-zone "
-            "walls and rotate rigidly with the associated propeller to preserve matched "
-            "sliding interfaces."
-        ],
+        "moving_surface_contract": "propeller-only; stationary airframe and motor intersections fail preflight",
         "resources": {"omp_threads": 4, "max_zone_local_nodes": 700_000,
                       "max_cells": 4_000_000,
                       "minimum_start_disk_bytes": MIN_START_DISK_BYTES,
@@ -218,11 +215,10 @@ def write_case(directory: Path, steps: int, revolutions: int,
     config.write_text(set_keys(config.read_text(encoding="utf-8"), updates), encoding="utf-8")
     for index in range(5):
         path = directory / ("zone_static.cfg" if index == 0 else f"zone_rotor_{index}.cfg")
-        marker = "AIRFRAME_MOTOR" if index == 0 else f"ROTOR_WALL_{index}"
+        marker = "AIRFRAME_MOTOR" if index == 0 else f"ROTOR_PROPELLER_{index}"
         text = path.read_text(encoding="utf-8").replace(
             f"MARKER_EULER= ( {marker} )", f"MARKER_HEATFLUX= ( {marker}, 0.0 )")
-        text += (f"MARKER_MONITORING= ( {marker} )\nMARKER_PLOTTING= ( {marker} )\n"
-                 f"MARKER_WALL_FUNCTIONS= ( {marker}, STANDARD_WALL_FUNCTION )\n"
+        text += (f"MARKER_WALL_FUNCTIONS= ( {marker}, STANDARD_WALL_FUNCTION )\n"
                  "WALLMODEL_MINYPLUS= 5.0\n")
         # Per-zone output selections are not inherited by SU2's multizone driver.
         for key in ("HISTORY_OUTPUT", "VOLUME_OUTPUT", "SCREEN_OUTPUT"):
@@ -245,9 +241,8 @@ def write_case(directory: Path, steps: int, revolutions: int,
         f"{SPEED:g} m/s, aircraft alpha={ALPHA:g} deg, SU2 AOA={180-ALPHA:g} deg.\n"
         f"{steps} steps/revolution; dt={60/RPM/steps:.12g} s.\n"
         "Adiabatic smooth walls; fully turbulent, no transition model.\n"
-        "Approximation: airframe OML patches intersecting rotor zones are included as "
-        "rotor-zone walls and rotate rigidly with the associated propeller.\n"
-        "Motor can follows rotor as in the existing sliding-zone model.\n"
+        "Only propeller walls move; airframe and motor geometry remain stationary. "
+        "Any rotor-zone intersection with stationary geometry is rejected before meshing.\n"
         "Coefficients use the same freestream dynamic pressure in all zones.\n"
         "Use physical XYZ forces; SU2 LIFT has reversed sign in this orientation.\n"
         "Tetrahedral wall-function mesh; no prism layers, no design-ready claim.\n",
@@ -417,6 +412,7 @@ def summarize_case(directory: Path, steps: int, revolutions: int,
                    geometry: str = "pr3_baseline") -> dict:
     # Multizone writes separate zone histories as well as a global history.
     params, area, mac = geometry_values(geometry)
+    rotors = configure_rotor_case._rotors(params)
     expected_steps = steps * revolutions
     all_zones_complete = True
     result = {"status": "incomplete", "run_complete": False, "geometry": geometry,
@@ -489,9 +485,21 @@ def summarize_case(directory: Path, steps: int, revolutions: int,
         if record["y_plus"] is not None and record["y_plus"]["fraction_below_5"] > .2:
             result["issues"].append(f"Zone {zone}: >20% of wall nodes fall below wall-function activation; near-wall layer resolution needs review")
         if zone:
-            y_mm, z_mm = params.propeller_mount_stations[zone - 1]
-            record["shaft_torque_Nm"] = record["moment_Nm"]["x"] - (
-                y_mm * 1e-3 * record["force_N"]["z"] - z_mm * 1e-3 * record["force_N"]["y"])
+            rotor = rotors[zone - 1]
+            record["shaft_torque_Nm"] = moment_about_shaft_axis(
+                tuple(record["moment_Nm"][axis] for axis in "xyz"),
+                tuple(record["force_N"][axis] for axis in "xyz"),
+                (rotor.x_m, rotor.y_m, rotor.z_m),
+                rotor.shaft_axis_xyz,
+            )
+            record["rotor_station"] = {
+                "x_m": rotor.x_m, "y_m": rotor.y_m, "z_m": rotor.z_m,
+                "station": rotor.station_name, "side": rotor.side,
+                "hand": rotor.prop_hand, "spin_sign": rotor.spin_sign,
+                "shaft_axis_xyz": rotor.shaft_axis_xyz,
+                "thrust_direction_xyz": rotor.thrust_direction_xyz,
+            }
+            record["shaft_torque_source_marker"] = rotor.propeller_wall
         result["zone_forces"].append(record)
     driver = multizone_history_path(directory)
     if driver is not None:
@@ -512,8 +520,10 @@ def summarize_case(directory: Path, steps: int, revolutions: int,
         result["total_force_N"] = total
         result["net_streamwise_force_N_positive_drag"] = -total["x"]*math.cos(angle) + total["z"]*math.sin(angle)
         result["upward_lift_N"] = total["x"]*math.sin(angle) + total["z"]*math.cos(angle)
-        result["shaft_power_W"] = sum(-row["shaft_torque_Nm"] * spin * RPM*2*math.pi/60
-                                        for row, spin in zip(result["zone_forces"][1:], (-1, 1, -1, 1)))
+        result["shaft_power_W"] = sum(
+            -row["shaft_torque_Nm"] * row["rotor_station"]["spin_sign"] * RPM * 2 * math.pi / 60
+            for row in result["zone_forces"][1:]
+        )
     result["run_complete"] = all_zones_complete and len(result["zone_forces"]) == 5
     result["status"] = "completed_exploratory" if result["run_complete"] else "incomplete"
     result["issues"].append("No prism boundary layers or transition model; wall shear and separation need independent validation")
@@ -551,8 +561,8 @@ def report(directory: Path, cases: list[dict], failure: str | None,
              "Status: " + ("stopped: " + failure if failure else "finite campaign completed"),
              "", "Four blade-resolved sliding zones; 40,000 RPM;",
              "15 m/s; alpha 4 degrees; sea level; smooth adiabatic walls; SST URANS.", "",
-             "Modeling approximation: airframe OML patches inside rotor zones rotate with "
-             "their associated propeller to preserve matched sliding interfaces.", "",
+             "Moving zones contain propeller surfaces only. The mesher rejects cases where "
+             "a rotating zone intersects stationary airframe or motor geometry.", "",
              "This is exploratory wall-modelled CFD. There are no prism layers and no transition",
              "model. Completion is not evidence of converged or design-ready aerodynamics.", ""]
     for case in cases:

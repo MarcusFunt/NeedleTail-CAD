@@ -34,6 +34,8 @@ def write_configs(
 ) -> tuple[Path, float, int]:
     if rpm <= 0 or revolutions <= 0 or steps_per_revolution < 12:
         raise ValueError("RPM and revolutions must be positive; use at least 12 steps per revolution")
+    if topology == "coaxial8" and coaxial_separation_mm is None:
+        raise ValueError("coaxial8 configuration requires an explicit coaxial separation")
 
     rotors = _rotors(params, topology, coaxial_separation_mm)
     generated_names = [
@@ -63,6 +65,8 @@ def write_configs(
 
     static = """% Stationary aircraft and outer-flow region.
 GRID_MOVEMENT= NONE
+MARKER_MONITORING= ( AIRFRAME_MOTOR )
+MARKER_PLOTTING= ( AIRFRAME_MOTOR )
 MARKER_EULER= ( AIRFRAME_MOTOR )
 MARKER_FAR= ( FARFIELD )
 """
@@ -77,20 +81,22 @@ MARKER_FAR= ( FARFIELD )
         y_m = rotor.y_m
         z_m = rotor.z_m
         motion_origin_x = rotor.x_m
-        marker = f"ROTOR_WALL_{index}"
-        rotor = f"ROTOR_IF_{index}"
+        marker = f"ROTOR_PROPELLER_{index}"
+        rotor_interface = f"ROTOR_IF_{index}"
         stationary = f"STATIC_IF_{index}"
-        interface_pairs.extend((stationary, rotor))
+        interface_pairs.extend((stationary, rotor_interface))
         rate = spin_sign * angular_speed
         text = f"""% Rotor {index}: {hand} blade geometry, {spin_sign:+d} X-axis rotation.
 GRID_MOVEMENT= RIGID_MOTION
 MOTION_ORIGIN= {motion_origin_x:.9f} {y_m:.9f} {z_m:.9f}
 ROTATION_RATE= {rate:.9f} 0.0 0.0
+MARKER_MONITORING= ( {marker} )
+MARKER_PLOTTING= ( {marker} )
 MARKER_EULER= ( {marker} )
 """
         (case_dir / zone_name).write_text(text, encoding="utf-8")
 
-    config = f"""% Blade-resolved four-propeller sliding-mesh case.
+    config = f"""% Blade-resolved topology sliding-mesh case.
 % Geometry: {geometry}.
 % Provisional motor speed: {rpm:.1f} RPM; change with run_rotor_case.ps1 -Rpm.
 % Rotor zones and aircraft coordinates are generated from airframe_geometry.py.
@@ -155,9 +161,9 @@ SCREEN_OUTPUT= ( OUTER_ITER, WALL_TIME, RMS_RES )
         f"Topology: {topology}; rotor count: {len(rotors)}; alpha: {alpha_deg:.3f} deg; "
         f"speed: {speed_mps:.3f} m/s\n"
         f"Time levels including t=0: {time_steps}\n"
-        "Approximation: airframe OML patches intersecting rotor zones rotate rigidly "
-        "with the associated rotor to preserve matched sliding interfaces.\n"
-        "Model: compressible inviscid Euler; four actual propeller STEP solids in rotating zones.\n"
+        "Only propeller surfaces are assigned to rigidly rotating zones; stationary "
+        "airframe and motor intersections are rejected before meshing.\n"
+        f"Model: compressible inviscid Euler; {len(rotors)} actual propeller STEP solids in rotating zones.\n"
     )
     (case_dir / "rotor_run_parameters.txt").write_text(run_info, encoding="utf-8")
     print(

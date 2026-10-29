@@ -6,7 +6,7 @@ do not silently mutate the existing, validated tractor baseline.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from math import isfinite
+from math import isfinite, sqrt
 
 TOPOLOGIES = ("tractor4", "pusher4", "coaxial8")
 FLAP_MODES = ("none", "horizontal", "all_four")
@@ -52,6 +52,59 @@ class RotorStation:
     side: str
     xyz_mm: tuple[float, float, float]
     spin_sign: int
+    shaft_axis_xyz: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    thrust_direction_xyz: tuple[float, float, float] = (1.0, 0.0, 0.0)
+
+    def __post_init__(self):
+        if isinstance(self.spin_sign, bool) or self.spin_sign not in (-1, 1):
+            raise ValueError("Rotor spin sign must be -1 or +1")
+        if len(self.xyz_mm) != 3 or not all(isfinite(value) for value in self.xyz_mm):
+            raise ValueError("Rotor station position must contain three finite coordinates")
+        for label, vector in (("shaft axis", self.shaft_axis_xyz),
+                              ("thrust direction", self.thrust_direction_xyz)):
+            if len(vector) != 3 or not all(isfinite(value) for value in vector):
+                raise ValueError(f"Rotor {label} must contain three finite components")
+            if abs(sqrt(sum(value * value for value in vector)) - 1.0) > 1e-9:
+                raise ValueError(f"Rotor {label} must be a unit vector")
+
+    @property
+    def propeller_hand(self) -> str:
+        """Reference STEP hand matching this +X spin sign; hardware needs verification."""
+        return propeller_hand_for_spin_sign(self.spin_sign)
+
+
+def propeller_hand_for_spin_sign(spin_sign: int) -> str:
+    """Map signed +X rotation to the reference STEP hand label.
+
+    Positive rotation appears clockwise from aft (-X) looking toward the nose
+    (+X); this label mapping is a packaging convention pending hardware check.
+    """
+    if isinstance(spin_sign, bool) or spin_sign not in (-1, 1):
+        raise ValueError("Rotor spin sign must be -1 or +1")
+    return "CW" if spin_sign > 0 else "CCW"
+
+
+def moment_about_shaft_axis(
+    moment_xyz_nm: tuple[float, float, float],
+    force_xyz_n: tuple[float, float, float],
+    shaft_origin_xyz_m: tuple[float, float, float],
+    shaft_axis_xyz: tuple[float, float, float],
+) -> float:
+    """Shift an origin moment to the shaft point and project onto its unit axis."""
+    vectors = (moment_xyz_nm, force_xyz_n, shaft_origin_xyz_m, shaft_axis_xyz)
+    if any(len(vector) != 3 or not all(isfinite(value) for value in vector)
+           for vector in vectors):
+        raise ValueError("Shaft torque inputs must be finite 3-vectors")
+    if abs(sqrt(sum(value * value for value in shaft_axis_xyz)) - 1.0) > 1e-9:
+        raise ValueError("Shaft axis must be a unit vector")
+    rx, ry, rz = shaft_origin_xyz_m
+    fx, fy, fz = force_xyz_n
+    shifted = (
+        moment_xyz_nm[0] - (ry * fz - rz * fy),
+        moment_xyz_nm[1] - (rz * fx - rx * fz),
+        moment_xyz_nm[2] - (rx * fy - ry * fx),
+    )
+    return sum(axis * moment for axis, moment in zip(shaft_axis_xyz, shifted))
 
 
 def motor_positions(p):
@@ -63,13 +116,19 @@ def motor_positions(p):
 
 
 def rotor_stations(p, d: Design):
-    """All thrust axes point toward CAD +X, regardless of motor placement."""
+    """Return rotor poses with signed angular rates about aircraft +X.
+
+    ``spin_sign`` is the sign of the physical angular velocity around +X.
+    Viewed from aircraft aft (-X) toward the nose (+X), positive is clockwise.
+    The available CW/CCW STEP labels follow that view convention; the actual
+    hardware rotation still needs confirmation before flight use.
+    """
     pod_center_x = getattr(p, "motor_pod_center_x", p.motor_station_x)
     front_x = p.prop_hub_center_x
     rear_x = (front_x - d.coaxial_separation_mm if d.coaxial_separation_mm
               is not None and d.topology == "coaxial8"
               else 2 * pod_center_x - front_x)
-    # Equal-throttle torque balance. Actual CW/CCW choice requires verification.
+    # Equal-throttle torque balance in the shared +X angular-rate convention.
     spin = {"left": 1, "right": 1, "bottom": -1, "top": -1}
     out = []
     for name, y, z in motor_positions(p):

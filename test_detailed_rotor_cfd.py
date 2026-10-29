@@ -18,14 +18,20 @@ def write_mesh_fixture(path: Path, omit_marker: str | None = None,
     boundary_triangles = ["5 0 1 3", "5 0 2 3", "5 1 2 3",
                           "5 0 2 4", "5 0 1 4", "5 1 2 4"]
     static_markers = ["AIRFRAME_MOTOR", "FARFIELD", *(f"STATIC_IF_{i}" for i in range(1, 5))]
+    coordinates = ["0 0 0 0", "1 0 0 1", "0.5 0.8660254037844386 0 2",
+                   "0.5 0.2886751345948129 0.816496580927726 3",
+                   "0.5 0.2886751345948129 -0.816496580927726 4"]
+    tetrahedra = (tetra_row, "10 0 2 1 4")
     for zone in range(1, 6):
-        lines.extend((f"IZONE= {zone}", "NDIME= 3", "NELEM= 2", tetra_row,
-                      "10 0 2 1 4", "NPOIN= 5", "0 0 0 0", "1 0 0 1", "0 1 0 2",
-                      "0 0 1 3", "0 0 -1 4"))
+        lines.extend((f"IZONE= {zone}", "NDIME= 3", "NELEM= 2", *tetrahedra,
+                      "NPOIN= 5", *coordinates))
         markers = ({name: [triangle] for name, triangle in zip(static_markers, boundary_triangles)}
                    if zone == 1 else {
-                       f"ROTOR_WALL_{zone - 1}": boundary_triangles[:3],
-                       f"ROTOR_IF_{zone - 1}": boundary_triangles[3:],
+                       f"ROTOR_PROPELLER_{zone - 1}": [
+                           triangle for triangle in boundary_triangles
+                           if triangle != boundary_triangles[zone]
+                       ],
+                       f"ROTOR_IF_{zone - 1}": [boundary_triangles[zone]],
                    })
         if omit_marker:
             markers.pop(omit_marker, None)
@@ -73,6 +79,8 @@ class DetailedRotorReportingTests(unittest.TestCase):
                 zone = (directory / f"zone_rotor_{index}.cfg").read_text()
                 self.assertIn("MARKER_HEATFLUX", zone)
                 self.assertNotIn("MARKER_EULER", zone)
+                self.assertIn(f"MARKER_MONITORING= ( ROTOR_PROPELLER_{index} )", zone)
+                self.assertNotIn(f"ROTOR_WALL_{index}", zone)
                 self.assertIn("AERO_COEFF", zone)
                 self.assertIn("STANDARD_WALL_FUNCTION", zone)
 
@@ -182,7 +190,7 @@ class DetailedRotorReportingTests(unittest.TestCase):
     def test_rotor_torque_and_shaft_power_signs_follow_rotation_direction(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            spins = (-1, 1, -1, 1)
+            spins = tuple(rotor.spin_sign for rotor in mesher._rotors(cfd.PARAMETERS))
             for zone in range(5):
                 with (directory / f"rotor_history_{zone}.csv").open("w", newline="") as stream:
                     writer = csv.writer(stream)
@@ -201,7 +209,7 @@ class DetailedRotorReportingTests(unittest.TestCase):
                     '"Y_Plus"\n10\n20\n30\n', encoding="utf-8")
 
             result = cfd.summarize_case(directory, 120, 20)
-            expected_torques = (0.01, -0.01, 0.01, -0.01)
+            expected_torques = tuple(-spin * 0.01 for spin in spins)
             for record, expected in zip(result["zone_forces"][1:], expected_torques):
                 self.assertAlmostEqual(record["shaft_torque_Nm"], expected, places=10)
             expected_power = 4 * 0.01 * cfd.RPM * 2 * 3.141592653589793 / 60

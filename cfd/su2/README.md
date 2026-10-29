@@ -1,6 +1,24 @@
 # SU2 external-flow setup
 
-This is a first end-to-end SU2 check against either `airframe_oml.step` or the
+## Topology campaign status
+
+`topology_cfd_campaign.py` is an experimental powered Euler screen. It uses
+the shared rotor station, shaft-axis, thrust-direction, hand and spin contract, requires an explicit coaxial separation,
+checks CAD clearance, rejects fixed airframe or motor geometry inside a rotating
+zone, rejects overlapping independent rotor zones, isolates propeller-only wall loads, and validates mesh orientation,
+quality, connectivity, interfaces, and history acceptance. Numerical completion
+does not establish design readiness; mesh and time-step sensitivity are still
+required. See [`docs/cfd_topology_validation.md`](../../docs/cfd_topology_validation.md)
+for the gates and the opt-in bounded smoke command.
+
+The current baseline's geometry-only probe finds that rotor 1's rotating zone
+intersects both the airframe OML and motor case, so the campaign correctly stops
+before meshing. Revise the geometry or sliding-zone layout before running SU2.
+`--interference-diagnostic` records both swept-disk CAD clearance and geometry-only
+Gmsh checks for fixed-surface intersections. It creates no mesh, does not start
+SU2, and never enables rankings.
+
+This is the original end-to-end SU2 check against either `airframe_oml.step` or the
 separate `airframe_candidate_oml.step`. The PR #3 baseline remains the default;
 pass `-Geometry airfoil_candidate` to either PowerShell runner to select the
 candidate. It creates an
@@ -48,10 +66,10 @@ not use their force coefficients for design decisions.
 `run_rotor_case.ps1` builds one stationary outer-flow zone and four blade-resolved
 sliding rotor zones from the selected geometry's `propeller_mount_stations` and the
 CW/CCW propeller STEP files. SU2 moves each rotor mesh at the requested RPM. The
-rotor zones use a parametric cylindrical motor-can envelope, fused with the actual
-prop STEP solids to remove overlap in the imported motor/prop assembly. The
-stationary zone uses the detailed motor STEP; the rotating zones omit its shaft
-and internal motor details. This is an external-flow check, not a motor cooling or
+stationary zone uses the detailed motor STEP; moving zones contain propeller
+surfaces only. The current strict clearance preflight can reject the supplied
+airframe/motor arrangement before meshing; do not bypass that gate to obtain a
+solver run. This is an external-flow check, not a motor cooling or
 electromagnetic model.
 
 Run from the repository root with a provisional 40,000 RPM and one revolution:
@@ -64,15 +82,12 @@ Use `-Geometry airfoil_candidate` to select the separate geometry candidate.
 Candidate outputs use `tmp\su2-rotor-airfoil_candidate\`; choose another
 `-CaseDir` when you need a fresh run. Existing outputs are not overwritten.
 
-The solver uses compressible inviscid Euler flow at 15 m/s cruise, with 120 time
-steps per revolution. The generated mesh has five zones and about 369,000
-tetrahedra. SU2 outputs per-zone `.vtu` snapshots, surface CSVs, restarts, and the
-multizone history under `tmp\su2-rotor\` for baseline geometry. The
-2026-10-24 run completed 121 time
-levels (including t=0) through 0.0015 s, exactly one revolution, with no solver or
-interface errors. It was a transient setup check: the final residuals had not
-converged, and its inviscid model and provisional RPM are not suitable for design
-decisions.
+The historical 2026-10-24 solver run used an earlier rotating-zone model and
+completed 121 time levels (including t=0) through 0.0015 s, exactly one
+revolution. It predates the current stationary-component clearance gate and is
+not evidence that the geometry passes the updated physical checks. Its final
+residuals had not converged, and its inviscid model and provisional RPM are not
+suitable for design decisions.
 
 ## Scope
 
@@ -111,12 +126,11 @@ All zones use the same 15 m/s reference speed for force coefficients, including
 The aircraft has nose +X and Z up; aircraft alpha +4 degrees corresponds to SU2
 AOA 176 degrees. Reports use physical XYZ forces and explicitly project upward
 lift and net streamwise force; SU2's default `LIFT` has reversed sign here.
-Motor-can external surfaces rotate with their rotor zone, as in the previous
-blade-resolved setup; this is not a motor-internals model.
-To preserve matched sliding interfaces for the current OML, any airframe surfaces
-that intersect a rotor zone are included as rotor-zone walls and rotate with that
-zone. This is an explicit exploratory approximation; those local airframe loads do
-not represent a stationary pod.
+The current multi-zone setup moves propeller surfaces only. Airframe and motor
+surfaces remain stationary; the mesher rejects cases where a rotating zone
+intersects either. The historical campaign approximation described in older
+results is not used by the current setup and does not establish a valid stationary
+wall model.
 
 First generate and run the one-revolution Euler setup case for the selected
 geometry with `run_rotor_case.ps1`. This supplies a mesh for the bounded SU2

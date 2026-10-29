@@ -150,7 +150,7 @@ def _load_zone(index: int, time_index: int) -> tuple[dict[str, np.ndarray], TetF
         vtk_path = CASE_DIR / f"rotor_flow_0_{time_index:05d}.vtu"
     else:
         zone_path = CASE_DIR / "rotor_zones" / f"zone_{index + 1}_rotor.su2"
-        marker = f"ROTOR_WALL_{index}"
+        marker = f"ROTOR_PROPELLER_{index}"
         vtk_path = CASE_DIR / f"rotor_flow_{index}_{time_index:05d}.vtu"
     arrays = _read_vtu(vtk_path)
     mesh_points, triangles = _read_surface_marker(zone_path, marker)

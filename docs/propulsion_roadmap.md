@@ -1,6 +1,6 @@
 # Propulsion integration roadmap
 
-This roadmap tracks the scope completed by PR-A, PR-B, and PR-C, and the remaining gates from the October 29 integration plan. The branch does not change optimizer ranking, motor limits, CAD rotor conventions, or the topology CFD implementation.
+This roadmap tracks the propulsion work completed by PR-A, PR-B, and PR-C and the remaining integration gates. PR-CFD-R adds safety checks to the existing topology CFD path; it does not qualify a design or alter optimizer ranking.
 
 ## Completed in PR-A–C
 
@@ -17,7 +17,7 @@ This roadmap tracks the scope completed by PR-A, PR-B, and PR-C, and the remaini
 | Work | Status | Gate before use |
 |---|---|---|
 | PR-D: motor and battery operating points | Not started | Verify motor/ESC/battery parameters with sources and uncertainty; enforce current, voltage, thermal, RPM, and power balance; prove feasible map coverage before reporting achievable speed. |
-| PR-CFD-R: repair the existing topology CFD campaign | Not part of this branch | Resolve canonical spin/handedness, stationary wall motion, blade-only shaft torque, invalid geometry, signed mesh quality, and numerical acceptance. Until then, SU2 results cannot rank layouts or correct isolated maps. |
+| PR-CFD-R: repair the existing topology CFD campaign | Software gates implemented; G-CFD not passed | The baseline Gmsh geometry probe finds airframe and motor intersections with rotor 1's moving zone and stops before meshing. Physical CW/CCW identity, real SU2 history, calibrated mesh acceptance thresholds, and mesh/time-step sensitivity remain unverified. SU2 results cannot rank layouts or correct isolated maps. |
 | PR-E: installed-flow study | Deferred | Requires valid motor points and G-CFD; reuse the existing topology campaign and keep installed/coaxial uncertainty explicit. |
 | PR-F: physics-constrained optimizer | Deferred | Requires validated propulsion maps, motor feasibility, complete trim/force balance, and preserved compatibility with the existing concept-screen mode. |
 

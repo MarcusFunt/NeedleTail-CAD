@@ -43,6 +43,11 @@ class VariantCADSmoke(unittest.TestCase):
                 larger_prop.propeller_clearance_margin,
             )
 
+    def test_overlapping_coaxial_rotor_disks_fail_cad_validation(self):
+        design = Design(topology="coaxial8", coaxial_separation_mm=1.0)
+        with self.assertRaisesRegex(ValueError, "Invalid coaxial8/none clearance"):
+            validate_variant(PARAMETERS, design, min_clearance_mm=1.0)
+
     def test_neutral_flap_cad_split_generates_solid_panels(self):
         for mode,n in (("horizontal",2),("all_four",4)):
             parts=build_variant_components(PARAMETERS,Design(flaps=mode))
