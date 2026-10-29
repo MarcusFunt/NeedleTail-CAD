@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from math import pi
+from math import pi, sqrt
 from pathlib import Path
 import sys
 
@@ -14,6 +14,7 @@ from airframe_geometry import (
     AirframeParameters,
     airframe_parameters_for_geometry,
 )
+from generate_rotor_mesh import _rotors
 
 
 MM_TO_M = 0.001
@@ -26,13 +27,18 @@ def write_configs(
     steps_per_revolution: int = 120,
     params: AirframeParameters = PARAMETERS,
     geometry: str = "pr3_baseline",
+    topology: str = "tractor4",
+    coaxial_separation_mm: float | None = None,
+    alpha_deg: float = 0.0,
+    speed_mps: float = 15.0,
 ) -> tuple[Path, float, int]:
     if rpm <= 0 or revolutions <= 0 or steps_per_revolution < 12:
         raise ValueError("RPM and revolutions must be positive; use at least 12 steps per revolution")
 
+    rotors = _rotors(params, topology, coaxial_separation_mm)
     generated_names = [
         "zone_static.cfg",
-        *(f"zone_rotor_{index}.cfg" for index in range(1, 5)),
+        *(f"zone_rotor_{rotor.index}.cfg" for rotor in rotors),
         "rotor_case.cfg",
         "rotor_run_parameters.txt",
     ]
@@ -52,10 +58,6 @@ def write_configs(
     # requested time advances in SU2's TIME_ITER count.
     time_steps = physical_steps + 1
 
-    # Preserve the CW orientation from the existing +Y installation and use
-    # counter-rotating diagonally opposed pairs for torque balance.
-    setup = (("CCW", -1), ("CW", 1), ("CCW", -1), ("CW", 1))
-    stations = params.propeller_mount_stations
     zone_files = ["zone_static.cfg"]
     interface_pairs: list[str] = []
 
@@ -66,14 +68,15 @@ MARKER_FAR= ( FARFIELD )
 """
     (case_dir / zone_files[0]).write_text(static, encoding="utf-8")
 
-    for index, ((y_mm, z_mm), (hand, spin_sign)) in enumerate(
-        zip(stations, setup), start=1
-    ):
+    for rotor in rotors:
+        index = rotor.index
+        hand = rotor.prop_hand
+        spin_sign = rotor.spin_sign
         zone_name = f"zone_rotor_{index}.cfg"
         zone_files.append(zone_name)
-        y_m = y_mm * MM_TO_M
-        z_m = z_mm * MM_TO_M
-        motion_origin_x = params.prop_hub_center_x * MM_TO_M
+        y_m = rotor.y_m
+        z_m = rotor.z_m
+        motion_origin_x = rotor.x_m
         marker = f"ROTOR_WALL_{index}"
         rotor = f"ROTOR_IF_{index}"
         stationary = f"STATIC_IF_{index}"
@@ -109,12 +112,18 @@ OUTER_ITER= 5
 INNER_ITER= 1
 
 % 15 m/s cruise speed from +X toward -X; compressible because rotor tip Mach is high.
-MACH_NUMBER= 0.04409
-AOA= 180.0
+MACH_NUMBER= {speed_mps / sqrt(1.4 * 287.058 * 288.15):.12g}
+MACH_MOTION= {speed_mps / sqrt(1.4 * 287.058 * 288.15):.12g}
+AOA= {180.0 - alpha_deg:.9g}
 FREESTREAM_PRESSURE= 101325.0
 FREESTREAM_TEMPERATURE= 288.15
 FREESTREAM_OPTION= TEMPERATURE_FS
 INIT_OPTION= TD_CONDITIONS
+REF_AREA= {params.wing_planform_area * 1e-6:.12g}
+REF_LENGTH= {2 / 3 * params.wing_root_chord * 1e-3 * (1 + params.wing_tip_chord / params.wing_root_chord + (params.wing_tip_chord / params.wing_root_chord) ** 2) / (1 + params.wing_tip_chord / params.wing_root_chord):.12g}
+REF_ORIGIN_MOMENT_X= 0.0
+REF_ORIGIN_MOMENT_Y= 0.0
+REF_ORIGIN_MOMENT_Z= 0.0
 
 NUM_METHOD_GRAD= WEIGHTED_LEAST_SQUARES
 CONV_NUM_METHOD_FLOW= ROE
@@ -143,13 +152,17 @@ SCREEN_OUTPUT= ( OUTER_ITER, WALL_TIME, RMS_RES )
         f"Geometry: {geometry}\nRPM: {rpm:.3f}\nAngular speed: {angular_speed:.9f} rad/s\n"
         f"Time step: {time_step:.12g} s\nTime steps: {time_steps}\n"
         f"Simulated revolutions: {(time_steps - 1) / steps_per_revolution:.6f}\n"
+        f"Topology: {topology}; rotor count: {len(rotors)}; alpha: {alpha_deg:.3f} deg; "
+        f"speed: {speed_mps:.3f} m/s\n"
         f"Time levels including t=0: {time_steps}\n"
+        "Approximation: airframe OML patches intersecting rotor zones rotate rigidly "
+        "with the associated rotor to preserve matched sliding interfaces.\n"
         "Model: compressible inviscid Euler; four actual propeller STEP solids in rotating zones.\n"
     )
     (case_dir / "rotor_run_parameters.txt").write_text(run_info, encoding="utf-8")
     print(
         f"Wrote {config_path}: {rpm:.1f} RPM, {angular_speed:.3f} rad/s, "
-        f"{time_steps} steps over {time_steps / steps_per_revolution:.3f} revolutions."
+        f"{time_steps} time levels over {physical_steps / steps_per_revolution:.3f} revolutions."
     )
     return config_path, time_step, time_steps
 
@@ -165,6 +178,11 @@ def main() -> None:
     parser.add_argument("--rpm", type=float, default=40_000.0)
     parser.add_argument("--revolutions", type=float, default=1.0)
     parser.add_argument("--steps-per-revolution", type=int, default=120)
+    parser.add_argument("--topology", choices=("tractor4", "pusher4", "coaxial8"),
+                        default="tractor4")
+    parser.add_argument("--coaxial-separation-mm", type=float)
+    parser.add_argument("--alpha-deg", type=float, default=0.0)
+    parser.add_argument("--speed-mps", type=float, default=15.0)
     args = parser.parse_args()
     params = airframe_parameters_for_geometry(args.geometry)
     default_case_dir = (
@@ -179,6 +197,10 @@ def main() -> None:
         args.steps_per_revolution,
         params,
         args.geometry,
+        args.topology,
+        args.coaxial_separation_mm,
+        args.alpha_deg,
+        args.speed_mps,
     )
 
 

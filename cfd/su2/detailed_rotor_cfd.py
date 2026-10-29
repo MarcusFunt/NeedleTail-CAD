@@ -97,6 +97,11 @@ def campaign_configuration(geometry: str, revolutions: int,
         "reference_length_m": mac,
         "mesh_levels": [1.0, 0.75],
         "time_steps_per_revolution": [120, 120, 240],
+        "modeling_approximations": [
+            "Airframe OML patches intersecting rotor zones are treated as rotor-zone "
+            "walls and rotate rigidly with the associated propeller to preserve matched "
+            "sliding interfaces."
+        ],
         "resources": {"omp_threads": 4, "max_zone_local_nodes": 700_000,
                       "max_cells": 4_000_000,
                       "minimum_start_disk_bytes": MIN_START_DISK_BYTES,
@@ -132,8 +137,9 @@ def verify_prepared_campaign(plan: dict, geometry: str, revolutions: int,
     if revolutions != plan.get("revolutions") or hours_per_case != plan.get("hours_per_case"):
         raise RuntimeError("Command does not match the prepared run budget")
     configuration = campaign_configuration(geometry, revolutions, hours_per_case)
-    if (plan.get("configuration") != configuration
-            or plan.get("configuration_sha256") != digest_json(configuration)):
+    expected_configuration_hash = digest_json(configuration)
+    if (plan.get("configuration_sha256") != expected_configuration_hash
+            or digest_json(plan.get("configuration")) != expected_configuration_hash):
         raise RuntimeError("Campaign configuration changed after preparation")
     if plan.get("preflight_config_sha256") != preflight_config_digest:
         raise RuntimeError("Prepared SU2 configuration files changed after preparation")
@@ -239,6 +245,8 @@ def write_case(directory: Path, steps: int, revolutions: int,
         f"{SPEED:g} m/s, aircraft alpha={ALPHA:g} deg, SU2 AOA={180-ALPHA:g} deg.\n"
         f"{steps} steps/revolution; dt={60/RPM/steps:.12g} s.\n"
         "Adiabatic smooth walls; fully turbulent, no transition model.\n"
+        "Approximation: airframe OML patches intersecting rotor zones are included as "
+        "rotor-zone walls and rotate rigidly with the associated propeller.\n"
         "Motor can follows rotor as in the existing sliding-zone model.\n"
         "Coefficients use the same freestream dynamic pressure in all zones.\n"
         "Use physical XYZ forces; SU2 LIFT has reversed sign in this orientation.\n"
@@ -387,6 +395,24 @@ def find_column(table: dict, name: str) -> np.ndarray:
     raise KeyError(f"Missing {name}; columns={list(table)}")
 
 
+def multizone_history_path(directory: Path) -> Path | None:
+    """Return the configured SU2 multizone history, allowing older output names."""
+    candidates = (
+        directory / "rotor_history_multizone.csv",
+        directory / "rotor_history.csv",
+        directory / "rotor_case.csv",
+    )
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def is_bgs_residual_column(name: str) -> bool:
+    normalized = name.lower().replace("_", "").replace(" ", "")
+    return normalized.startswith((
+        "bgs[", "bgsres[", "bgsresidual[",
+        "avgbgs[", "avgbgsres[", "avgbgsresidual[",
+    ))
+
+
 def summarize_case(directory: Path, steps: int, revolutions: int,
                    geometry: str = "pr3_baseline") -> dict:
     # Multizone writes separate zone histories as well as a global history.
@@ -402,8 +428,8 @@ def summarize_case(directory: Path, steps: int, revolutions: int,
         path = next((p for p in candidates if p.is_file()), None)
         if path is None:
             # Driver history suffixes every zone-specific column with [zone].
-            driver = directory / "rotor_case.csv"
-            if not driver.is_file():
+            driver = multizone_history_path(directory)
+            if driver is None:
                 result["issues"].append(f"Zone {zone} history missing; force extraction unavailable")
                 all_zones_complete = False
                 continue
@@ -467,14 +493,14 @@ def summarize_case(directory: Path, steps: int, revolutions: int,
             record["shaft_torque_Nm"] = record["moment_Nm"]["x"] - (
                 y_mm * 1e-3 * record["force_N"]["z"] - z_mm * 1e-3 * record["force_N"]["y"])
         result["zone_forces"].append(record)
-    driver = directory / "rotor_case.csv"
-    if driver.is_file():
+    driver = multizone_history_path(directory)
+    if driver is not None:
         coupled = read_table(driver)
         time_index = find_column(coupled, "Time_Iter").astype(int)
         last = np.r_[np.flatnonzero(time_index[1:] != time_index[:-1]), len(time_index)-1]
         selected = last[time_index[last] > (revolutions-10)*steps]
         bgs = {key: float(np.max(column[selected])) for key, column in coupled.items()
-               if key.lower().startswith("bgs[") and len(selected)}
+               if is_bgs_residual_column(key) and len(selected)}
         result["worst_final_coupling_log_residual_in_sample"] = bgs
         if not bgs or max(bgs.values()) > -4:
             result["issues"].append("Coupled-zone residuals have not all reached -4")
@@ -525,6 +551,8 @@ def report(directory: Path, cases: list[dict], failure: str | None,
              "Status: " + ("stopped: " + failure if failure else "finite campaign completed"),
              "", "Four blade-resolved sliding zones; 40,000 RPM;",
              "15 m/s; alpha 4 degrees; sea level; smooth adiabatic walls; SST URANS.", "",
+             "Modeling approximation: airframe OML patches inside rotor zones rotate with "
+             "their associated propeller to preserve matched sliding interfaces.", "",
              "This is exploratory wall-modelled CFD. There are no prism layers and no transition",
              "model. Completion is not evidence of converged or design-ready aerodynamics.", ""]
     for case in cases:

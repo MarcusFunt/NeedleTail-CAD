@@ -113,6 +113,10 @@ AOA 176 degrees. Reports use physical XYZ forces and explicitly project upward
 lift and net streamwise force; SU2's default `LIFT` has reversed sign here.
 Motor-can external surfaces rotate with their rotor zone, as in the previous
 blade-resolved setup; this is not a motor-internals model.
+To preserve matched sliding interfaces for the current OML, any airframe surfaces
+that intersect a rotor zone are included as rotor-zone walls and rotate with that
+zone. This is an explicit exploratory approximation; those local airframe loads do
+not represent a stationary pod.
 
 First generate and run the one-revolution Euler setup case for the selected
 geometry with `run_rotor_case.ps1`. This supplies a mesh for the bounded SU2

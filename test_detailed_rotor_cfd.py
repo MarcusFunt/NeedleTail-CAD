@@ -208,6 +208,30 @@ class DetailedRotorReportingTests(unittest.TestCase):
             self.assertGreater(result["shaft_power_W"], 0)
             self.assertAlmostEqual(result["shaft_power_W"], expected_power, places=8)
 
+    def test_multizone_history_file_and_bgs_residual_columns_are_reported(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for zone in range(5):
+                with (directory / f"rotor_history_{zone}.csv").open("w", newline="") as stream:
+                    writer = csv.writer(stream)
+                    writer.writerow(("Time_Iter", "CFx", "CFy", "CFz", "CMx", "CMy", "CMz", "rms[Rho]"))
+                    for step in range(2401):
+                        writer.writerow((step, 0, 0, 0, 0, 0, 0, -6))
+                (directory / f"rotor_surface_{zone}_02400.csv").write_text(
+                    '"Y_Plus"\n10\n20\n30\n', encoding="utf-8")
+
+            with (directory / "rotor_history_multizone.csv").open("w", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(("Time_Iter", *(f"BGS_RES[{zone}]" for zone in range(5))))
+                for step in range(2401):
+                    writer.writerow((step, *([-6] * 5)))
+
+            result = cfd.summarize_case(directory, 120, 20)
+
+            self.assertEqual(result["worst_final_coupling_log_residual_in_sample"],
+                             {f"BGS_RES[{zone}]": -6.0 for zone in range(5)})
+            self.assertFalse(any("Coupled-zone residuals" in issue for issue in result["issues"]))
+
     def test_incomplete_history_is_not_reported_as_a_completed_run(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

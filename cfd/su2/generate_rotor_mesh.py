@@ -1,4 +1,4 @@
-"""Build a five-zone SU2 mesh with four blade-resolved sliding rotors."""
+"""Build an SU2 multizone mesh with topology-specific blade-resolved rotors."""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +17,7 @@ except ImportError:  # Keep test discovery usable without the optional CFD extra
     gmsh = None
 
 from airframe_geometry import PARAMETERS, AirframeParameters, airframe_parameters_for_geometry
+from design_configuration import Design, rotor_stations
 
 
 REFERENCE_DIR = ROOT / "references" / "propeller-kit" / "STEP"
@@ -28,7 +29,9 @@ PROP_STEPS = {
 }
 DEFAULT_OUTPUT = ROOT / "tmp" / "su2-rotor" / "rotor_domain.su2"
 MM_TO_M = 0.001
-BOUNDARY_TOLERANCE_M = 1e-5
+# OCC can expand clipped cap bounds by up to 35 microns. This tolerance is for
+# boundary-box classification; the rotor and static zones use the same OML cut.
+BOUNDARY_TOLERANCE_M = 5e-5
 ROTOR_CYLINDER_RADIAL_CLEARANCE_M = 0.003
 ROTOR_CYLINDER_AXIAL_CLEARANCE_M = 0.002
 MOTOR_BODY_RADIUS_M = PARAMETERS.motor_body_diameter * MM_TO_M / 2
@@ -37,10 +40,12 @@ MOTOR_BODY_RADIUS_M = PARAMETERS.motor_body_diameter * MM_TO_M / 2
 @dataclass(frozen=True)
 class Rotor:
     index: int
+    x_m: float
     y_m: float
     z_m: float
     prop_hand: str
     spin_sign: int
+    side: str
 
     @property
     def interface_static(self) -> str:
@@ -55,15 +60,35 @@ class Rotor:
         return f"ROTOR_WALL_{self.index}"
 
 
-def _rotors(params: AirframeParameters = PARAMETERS) -> tuple[Rotor, ...]:
-    stations = params.propeller_mount_stations
-    # Diagonal pairs counter-rotate. The +Y installation preserves the CW
-    # orientation used by motor_prop_installation.py.
-    setup = (("CCW", -1), ("CW", 1), ("CCW", -1), ("CW", 1))
-    return tuple(
-        Rotor(index, y * MM_TO_M, z * MM_TO_M, hand, sign)
-        for index, ((y, z), (hand, sign)) in enumerate(zip(stations, setup), start=1)
+def _rotors(
+    params: AirframeParameters = PARAMETERS,
+    topology: str = "tractor4",
+    coaxial_separation_mm: float | None = None,
+) -> tuple[Rotor, ...]:
+    design = Design(
+        topology=topology,
+        flaps="none",
+        coaxial_separation_mm=coaxial_separation_mm,
     )
+    stations = rotor_stations(params, design)
+    # Preserve the established tractor propeller hands from motor_prop_installation.py.
+    # The coaxial aft rotor on each station counter-rotates relative to its forward rotor.
+    spin_by_station = {"left": -1, "right": 1, "bottom": -1, "top": 1}
+    result = []
+    for index, station in enumerate(stations, start=1):
+        spin_sign = spin_by_station[station.name]
+        if topology == "coaxial8" and station.side == "rear":
+            spin_sign *= -1
+        result.append(Rotor(
+            index,
+            station.xyz_mm[0] * MM_TO_M,
+            station.xyz_mm[1] * MM_TO_M,
+            station.xyz_mm[2] * MM_TO_M,
+            "CW" if spin_sign > 0 else "CCW",
+            spin_sign,
+            station.side,
+        ))
+    return tuple(result)
 
 
 def _bounds(dim: int, tag: int) -> tuple[float, float, float, float, float, float]:
@@ -84,7 +109,9 @@ def _bounds_for(entities: list[tuple[int, int]]) -> tuple[float, float, float, f
     )
 
 
-def _close(left: float, right: float, tolerance: float = BOUNDARY_TOLERANCE_M) -> bool:
+def _close(left: float, right: float, tolerance: float | None = None) -> bool:
+    if tolerance is None:
+        tolerance = BOUNDARY_TOLERANCE_M
     return abs(left - right) <= tolerance
 
 
@@ -149,11 +176,18 @@ def _import_scaled_step(path: Path, heal: bool = False) -> list[tuple[int, int]]
 
 def _motor_body(rotor: Rotor, params: AirframeParameters = PARAMETERS) -> list[tuple[int, int]]:
     """Build the parametric axisymmetric motor can inside a rotating zone."""
+    front_x = params.motor_mount_face_x * MM_TO_M
+    motor_length = params.motor_body_length * MM_TO_M
+    x0 = (
+        front_x
+        if rotor.side == "front"
+        else 2 * params.motor_pod_center_x * MM_TO_M - front_x - motor_length
+    )
     tag = gmsh.model.occ.addCylinder(
-        params.motor_mount_face_x * MM_TO_M,
+        x0,
         rotor.y_m,
         rotor.z_m,
-        params.motor_body_length * MM_TO_M,
+        motor_length,
         0,
         0,
         params.motor_body_diameter * MM_TO_M / 2,
@@ -173,6 +207,9 @@ def _place_motor_reference(
         rotor.y_m,
         rotor.z_m,
     )
+    if rotor.side == "rear":
+        center_x = params.motor_pod_center_x * MM_TO_M
+        gmsh.model.occ.mirror(motor, 1, 0, 0, -center_x)
     return motor
 
 
@@ -183,11 +220,20 @@ def _place_propeller(
     gmsh.model.occ.rotate(prop, 0, 0, 0, 0, 1, 0, 0.5 * 3.141592653589793)
     gmsh.model.occ.translate(
         prop,
-        params.prop_hub_center_x * MM_TO_M,
+        rotor.x_m,
         rotor.y_m,
         rotor.z_m,
     )
     return prop
+
+
+def _load_airframe_oml(airframe_step: Path) -> list[tuple[int, int]]:
+    airframe = _import_scaled_step(airframe_step)
+    return [
+        entity
+        for entity in gmsh.model.occ.healShapes(airframe, tolerance=1e-6)
+        if entity[0] == 3
+    ]
 
 
 def _rotor_extent(
@@ -515,12 +561,7 @@ def _build_static_zone(
     airframe_step: Path = AIRFRAME_STEP,
 ) -> tuple[int, int, int]:
     gmsh.model.add("NeedleTail_stationary_external_flow")
-    airframe = _import_scaled_step(airframe_step)
-    airframe = [
-        entity
-        for entity in gmsh.model.occ.healShapes(airframe, tolerance=1e-6)
-        if entity[0] == 3
-    ]
+    airframe = _load_airframe_oml(airframe_step)
     body_bounds = _bounds_for(airframe)
     cylinders = [
         (
@@ -548,11 +589,37 @@ def _build_static_zone(
     farfield = (3, gmsh.model.occ.addBox(
         x_min, y_min, z_min, x_max - x_min, y_max - y_min, z_max - z_min
     ))
-    motors = []
-    for rotor in rotors:
-        motors.extend(_place_motor_reference(rotor, params))
-    cutters = [*airframe, *cylinders, *motors]
-    fluid, _ = gmsh.model.occ.cut([farfield], cutters, removeObject=True, removeTool=True)
+    # Each motor intersects its rotor cylinder. Fuse those overlapping tools
+    # first so OCC does not have to resolve many redundant motor/cylinder
+    # intersections in one large farfield cut (especially for coaxial8).
+    rotor_tools_by_side: dict[str, list[tuple[int, int]]] = {
+        "front": [], "rear": []
+    }
+    for rotor, cylinder in zip(rotors, cylinders):
+        motor = _place_motor_reference(rotor, params)
+        fused, _ = gmsh.model.occ.fuse(
+            [cylinder], motor, removeObject=True, removeTool=True
+        )
+        rotor_tools_by_side[rotor.side].extend(
+            entity for entity in fused if entity[0] == 3
+        )
+    gmsh.model.occ.synchronize()
+    # Keep the airframe boolean separate from the rotor/motor cuts. A single
+    # 17-tool OCC subtraction becomes extremely slow for coaxial8 because the
+    # rotor tools intersect the imported airframe at many locations.
+    fluid, _ = gmsh.model.occ.cut(
+        [farfield], airframe, removeObject=True, removeTool=True
+    )
+    gmsh.model.occ.synchronize()
+    # The front and rear stacks are separated along X; cutting each stack
+    # independently avoids one large eight-tool intersection graph.
+    for side in ("front", "rear"):
+        tools = rotor_tools_by_side[side]
+        if tools:
+            fluid, _ = gmsh.model.occ.cut(
+                fluid, tools, removeObject=True, removeTool=True
+            )
+            gmsh.model.occ.synchronize()
     gmsh.model.occ.removeAllDuplicates()
     gmsh.model.occ.synchronize()
     volumes = [(dim, tag) for dim, tag in fluid if dim == 3]
@@ -581,8 +648,15 @@ def _build_rotor_zone(
     prop_size_m: float,
     interface_size_m: float,
     params: AirframeParameters = PARAMETERS,
+    airframe_step: Path = AIRFRAME_STEP,
 ) -> tuple[int, int, int]:
+    """Build a matched rotor zone, treating intersecting OML patches as rotating walls.
+
+    This preserves the sliding-interface geometry for the exploratory RIGID_MOTION
+    model. SU2 rotates those clipped OML patches with the rotor zone.
+    """
     gmsh.model.add(f"NeedleTail_rotor_{rotor.index}")
+    airframe = _load_airframe_oml(airframe_step)
     x0, x1, radius = rotor_bounds
     cylinder = (3, gmsh.model.occ.addCylinder(
         x0, rotor.y_m, rotor.z_m, x1 - x0, 0, 0, radius
@@ -595,7 +669,7 @@ def _build_rotor_zone(
     )
     gmsh.model.occ.synchronize()
     fluid, _ = gmsh.model.occ.cut(
-        [cylinder], obstacle, removeObject=True, removeTool=True
+        [cylinder], [*airframe, *obstacle], removeObject=True, removeTool=True
     )
     gmsh.model.occ.synchronize()
     volumes = [(dim, tag) for dim, tag in fluid if dim == 3]
@@ -634,16 +708,17 @@ def _combine_zones(zone_paths: list[Path], output_path: Path) -> None:
             combined.write("\n")
 
 
-def validate_multizone_mesh(mesh_path: Path) -> list[dict[str, int]]:
-    """Validate five-zone SU2 structure, tetrahedra, points, and required markers."""
+def validate_multizone_mesh(mesh_path: Path, rotor_count: int = 4) -> list[dict[str, int]]:
+    """Validate a static zone plus the requested number of rotor zones."""
     lines = mesh_path.read_text(encoding="utf-8").splitlines()
-    if not lines or lines[0].strip() != "NZONE= 5":
-        raise ValueError("Expected a five-zone SU2 mesh")
+    zone_count = rotor_count + 1
+    if not lines or lines[0].strip() != f"NZONE= {zone_count}":
+        raise ValueError(f"Expected a {zone_count}-zone SU2 mesh")
     cursor = 1
     summaries: list[dict[str, int]] = []
-    for zone in range(1, 6):
+    for zone in range(1, zone_count + 1):
         if cursor >= len(lines) or lines[cursor].strip() != f"IZONE= {zone}":
-            raise ValueError(f"Expected IZONE={zone} in five-zone mesh")
+            raise ValueError(f"Expected IZONE={zone} in {zone_count}-zone mesh")
         cursor += 1
         if cursor >= len(lines) or lines[cursor].strip() != "NDIME= 3":
             raise ValueError(f"Zone {zone} must have NDIME=3")
@@ -657,9 +732,10 @@ def validate_multizone_mesh(mesh_path: Path) -> list[dict[str, int]]:
         tetrahedra: list[tuple[int, int, int, int]] = []
         for row in lines[cursor:cursor + element_count]:
             values = [int(value) for value in row.split()]
-            if len(values) != 5 or values[0] != 10:
+            if len(values) not in (5, 6) or values[0] != 10:
                 raise ValueError(f"Zone {zone} must contain only linear tetrahedra")
-            tetra = tuple(values[1:])
+            # Gmsh's SU2 writer appends an element ID after the four node IDs.
+            tetra = tuple(values[1:5])
             if len(set(tetra)) != 4:
                 raise ValueError(f"Zone {zone} has a degenerate tetrahedron connectivity")
             tetrahedra.append(tetra)
@@ -721,11 +797,13 @@ def validate_multizone_mesh(mesh_path: Path) -> list[dict[str, int]]:
             expected_type = 5
             for row in lines[cursor:cursor + count]:
                 values = [int(value) for value in row.split()]
-                if len(values) != 4 or values[0] != expected_type:
+                if len(values) not in (4, 5) or values[0] != expected_type:
                     raise ValueError(f"Zone {zone} marker {name} must contain triangles")
-                if min(values[1:]) < 0 or max(values[1:]) >= point_count:
+                # Marker rows can also carry a trailing Gmsh element ID.
+                nodes = values[1:4]
+                if min(nodes) < 0 or max(nodes) >= point_count:
                     raise ValueError(f"Zone {zone} marker {name} references a missing point")
-                face = tuple(sorted(values[1:]))
+                face = tuple(sorted(nodes))
                 if face not in boundary_faces:
                     raise ValueError(f"Zone {zone} marker {name} includes a non-boundary face")
                 if face in marked_boundary_faces:
@@ -735,8 +813,11 @@ def validate_multizone_mesh(mesh_path: Path) -> list[dict[str, int]]:
             if name in markers:
                 raise ValueError(f"Zone {zone} repeats marker {name}")
             markers[name] = count
-        required = ({"AIRFRAME_MOTOR", "FARFIELD", *(f"STATIC_IF_{i}" for i in range(1, 5))}
-                    if zone == 1 else {f"ROTOR_WALL_{zone - 1}", f"ROTOR_IF_{zone - 1}"})
+        required = (
+            {"AIRFRAME_MOTOR", "FARFIELD", *(f"STATIC_IF_{i}" for i in range(1, rotor_count + 1))}
+            if zone == 1
+            else {f"ROTOR_WALL_{zone - 1}", f"ROTOR_IF_{zone - 1}"}
+        )
         missing = required - markers.keys()
         if missing:
             raise ValueError(f"Zone {zone} is missing required markers: {sorted(missing)}")
@@ -747,7 +828,7 @@ def validate_multizone_mesh(mesh_path: Path) -> list[dict[str, int]]:
             )
         summaries.append({"zone": zone, "nodes": point_count, "tetrahedra": element_count})
     if cursor != len(lines):
-        raise ValueError("Unexpected trailing data after five-zone mesh")
+        raise ValueError(f"Unexpected trailing data after {zone_count}-zone mesh")
     return summaries
 
 
@@ -760,6 +841,8 @@ def generate_mesh(
     interface_size_m: float = 0.003,
     params: AirframeParameters = PARAMETERS,
     airframe_step: Path = AIRFRAME_STEP,
+    topology: str = "tractor4",
+    coaxial_separation_mm: float | None = None,
 ) -> tuple[int, int]:
     if gmsh is None:
         raise RuntimeError("Gmsh is required for meshing; install the optional cfd-meshing extra")
@@ -778,7 +861,7 @@ def generate_mesh(
         )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_dir.mkdir(parents=True, exist_ok=True)
-    rotors = _rotors(params)
+    rotors = _rotors(params, topology, coaxial_separation_mm)
     gmsh.initialize()
     try:
         gmsh.option.setNumber("General.Terminal", 1)
@@ -805,13 +888,13 @@ def generate_mesh(
             zone_stats.append(
                 _build_rotor_zone(
                     zone_path, rotor, rotor_bounds[rotor.index], prop_near_size_m,
-                    interface_size_m, params,
+                    interface_size_m, params, airframe_step,
                 )
             )
             gmsh.clear()
 
         _combine_zones(zone_paths, output_path)
-        validate_multizone_mesh(output_path)
+        validate_multizone_mesh(output_path, rotor_count=len(rotors))
         total_nodes = sum(nodes for nodes, _, _ in zone_stats)
         total_elements = sum(elements for _, elements, _ in zone_stats)
         total_filtered = sum(filtered for _, _, filtered in zone_stats)
@@ -834,6 +917,10 @@ def main() -> None:
     parser.add_argument("--interface-size-m", type=float, default=0.003)
     parser.add_argument("--geometry", choices=("pr3_baseline", "airfoil_candidate"),
                         default="pr3_baseline")
+    parser.add_argument("--topology", choices=("tractor4", "pusher4", "coaxial8"),
+                        default="tractor4")
+    parser.add_argument("--coaxial-separation-mm", type=float)
+    parser.add_argument("--airframe-step", type=Path)
     args = parser.parse_args()
     params = airframe_parameters_for_geometry(args.geometry)
     default_output = (DEFAULT_OUTPUT if args.geometry == "pr3_baseline" else
@@ -841,9 +928,11 @@ def main() -> None:
     output = (args.output or default_output).resolve()
     airframe_step = ROOT / ("airframe_oml.step" if args.geometry == "pr3_baseline"
                             else "airframe_candidate_oml.step")
+    if args.airframe_step:
+        airframe_step = args.airframe_step.resolve()
     generate_mesh(output, args.domain_padding_m, args.static_near_size_m,
                   args.static_far_size_m, args.prop_near_size_m, args.interface_size_m,
-                  params, airframe_step)
+                  params, airframe_step, args.topology, args.coaxial_separation_mm)
 
 
 if __name__ == "__main__":
