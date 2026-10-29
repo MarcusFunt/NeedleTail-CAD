@@ -29,7 +29,7 @@ Install every dependency and optional extra declared by this project:
 uv sync --locked --all-extras
 ```
 
-The optional extras are `aero` (AeroSandbox and NeuralFoil) and `cfd-meshing` (Gmsh). The qprop.c portable binding is a separate checksum-pinned MIT release and is not a Python package dependency or a change to `pyproject.toml`/`uv.lock`.
+The optional extras are `aero` (AeroSandbox and NeuralFoil), `cfd-meshing` (Gmsh), and `propulsion` (PyThrust pinned to revision `c7a9f597d13ab70f1d4b15d6a77c2c424be42cd6`). The qprop.c portable binding is a separate checksum-pinned MIT release and is not a Python package dependency.
 
 Install qprop.c to a new local directory (the installer refuses to overwrite it):
 
@@ -98,3 +98,36 @@ This is a procedural family-level holdout, not a blinded experiment: public valu
 ## Scope boundary
 
 The comparison does not determine motor electrical equilibrium or safe RPM, installed pusher/tractor/coaxial interference, or a maximum-speed configuration. PyThrust/motor integration and installed-flow evaluation are separate plan phases. The supplied propeller-kit STEP remains clearance-only. The existing topology CFD campaign was not modified here and is not considered physically qualified by passing these propulsion tests.
+
+## Motor and battery operating points (PR-D)
+
+`propulsion.operating_points` couples a user-supplied, SI-based `C_T`/`C_P` propeller map to the PyThrust motor, battery, and system models. PyThrust was tested with Python 3.13.5; its complete upstream suite passed 109 tests. The source revision is pinned in the `propulsion` extra and lock file.
+
+The exporter accepts a CSV with exactly these required fields (additional source columns may be present): `rpm`, `advance_ratio`, `thrust_coeff`, and `power_coeff`. Its metadata JSON must define `id`, `manufacturer`, `model`, `diameter_m`, `pitch_m`, `blade_count`, `source_uri`, and `source_description`.
+
+```powershell
+uv run --locked --extra propulsion python -m propulsion.operating_points export-map `
+  path/to/source_coefficients.csv `
+  path/to/source_metadata.json `
+  path/to/validated_propeller_map
+```
+
+This writes `propeller_map.csv` plus `propeller_map.json`, including coefficient schema, RPM/J domain, source and normalized CSV hashes, and PyThrust revision. The adapter refuses RPM or advance-ratio requests outside the support of the bracketing RPM bands. It does not use PyThrust's low-J or RPM endpoint clamping.
+
+The checked-in [XING2 parameter record](data/xing2_1404_4600kv.json) preserves the 4600 KV, 159 mΩ interphase resistance, 3S–4S input range, and reported 17.99 A peak current. It records no-load current, sustained limits, ESC characteristics, battery resistance, winding-temperature rating, and test duration as unknown. The 0.5× / 1.0× effective-resistance cases are convention sensitivity cases, not motor measurements.
+
+Run a constrained sweep by supplying a PyThrust rate-map battery JSON, a constraints JSON, and one or more explicit motor sensitivity scenarios:
+
+```powershell
+uv run --locked --extra propulsion python -m propulsion.operating_points sweep `
+  --map-csv path/to/validated_propeller_map/propeller_map.csv `
+  --map-metadata path/to/validated_propeller_map/propeller_map.json `
+  --battery-cell-json path/to/battery_cell.json `
+  --series 4 --parallel 1 --soc 0.9 --speed-mps 0 `
+  --constraints-json path/to/constraints.json `
+  --output-directory path/to/operating_point_run
+```
+
+The constraints JSON requires a motor scenario (`label`, `effective_resistance_ohm`, `no_load_current_a`, and `assumption_note`), `system_resistance_ohm`, `esc_efficiency`, motor/battery current limits, `max_rpm`, `max_winding_temperature_c`, `motor_thermal_resistance_c_per_w`, `max_esc_temperature_c`, `esc_thermal_resistance_c_per_w`, `ambient_temperature_c`, and `mission_duration_s`. An optional `motor_scenarios` array defines uncertainty cases; optional `throttle_values`, density, shaft-power and battery-power limits can refine the sweep. Without a custom throttle list, it samples 0.025–1.0 in 0.025 increments and bisects sampled feasible/infeasible boundaries. This makes the returned maximum repeatable while leaving arbitrary non-monotonic map behavior outside a global-optimum claim. Battery sag and mission energy use the supplied cell OCV/resistance curves and state of charge. The thermal screen uses the caller's steady-state motor and ESC thermal resistance; it treats modelled motor loss and ESC loss as heat, and neither thermal input is calibrated by iFlight.
+
+Each sweep writes per-scenario/per-throttle `operating_points.csv` rows and an `operating_points.json` manifest with the source identity and thrust, shaft-power, and battery-power scenario envelopes. Results retain separate `feasible`, `infeasible`, `solver_failed`, and `out_of_map` statuses. They are constrained analysis outputs, not flight-ready current, thermal, RPM, or speed limits; actual map coverage, no-load current, resistance convention, ESC efficiency, battery curves, thermal resistance, and structural RPM limits must be supplied and verified for a real configuration.

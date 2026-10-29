@@ -16,7 +16,7 @@ This roadmap tracks the scope completed by PR-A, PR-B, and PR-C, and the remaini
 
 | Work | Status | Gate before use |
 |---|---|---|
-| PR-D: motor and battery operating points | Not started | Verify motor/ESC/battery parameters with sources and uncertainty; enforce current, voltage, thermal, RPM, and power balance; prove feasible map coverage before reporting achievable speed. |
+| PR-D: motor and battery operating points | Implementation added; hardware inputs still unverified | Use a checksum-traceable propeller map and caller-supplied motor, ESC, battery, thermal, and RPM bounds; validate coverage before reporting achievable speed. |
 | PR-CFD-R: repair the existing topology CFD campaign | Not part of this branch | Resolve canonical spin/handedness, stationary wall motion, blade-only shaft torque, invalid geometry, signed mesh quality, and numerical acceptance. Until then, SU2 results cannot rank layouts or correct isolated maps. |
 | PR-E: installed-flow study | Deferred | Requires valid motor points and G-CFD; reuse the existing topology campaign and keep installed/coaxial uncertainty explicit. |
 | PR-F: physics-constrained optimizer | Deferred | Requires validated propulsion maps, motor feasibility, complete trim/force balance, and preserved compatibility with the existing concept-screen mode. |
@@ -32,4 +32,4 @@ This roadmap tracks the scope completed by PR-A, PR-B, and PR-C, and the remaini
 
 ## Operating boundaries
 
-The generic 3×4 STEP model is packaging geometry only. The fixed-RPM exploratory SU2 campaign is not a motor model, and its aggregate zone loads are not motor shaft torque. Do not infer attainable maximum speed, topology preference, or installed-flow correction from the current PR-A–C results.
+The generic 3×4 STEP model is packaging geometry only. The PR-D operating-point implementation accepts an explicitly supplied coefficient map and calibrated or bounded hardware scenarios; the repository does not yet select a production map or establish XING2 no-load current, sustained/thermal limits, ESC data, battery curves, or structural RPM. The fixed-RPM exploratory SU2 campaign is not a motor model, and its aggregate zone loads are not motor shaft torque. Do not infer attainable maximum speed, topology preference, or installed-flow correction from the current propulsion evidence.

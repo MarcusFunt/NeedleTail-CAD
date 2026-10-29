@@ -15,6 +15,9 @@ aero = [
     "neuralfoil==0.3.3",
 ]
 cfd-meshing = ["gmsh==4.15.2"]
+propulsion = [
+    "setuav-pythrust @ git+https://github.com/Setuav/PyThrust.git@c7a9f597d13ab70f1d4b15d6a77c2c424be42cd6",
+]
 
 [tool.uv]
 package = false
