@@ -137,10 +137,11 @@ jobs:
         run: uv run --locked python -m unittest test_detailed_rotor_cfd -v
       - name: Run propulsion contracts, parsers, benchmark fixtures, and topology regressions
         run: >-
-          uv run --locked python -m unittest
+          uv run --locked --extra propulsion python -m unittest
           propulsion.tests.test_contracts
           test_propulsion_data
           test_propulsion_benchmark
+          test_operating_points
           test_validation_bundle
           test_validation_holdouts
           test_qpropc_adapter

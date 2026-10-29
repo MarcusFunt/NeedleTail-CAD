@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "motor": {
+    "manufacturer": "iFlight",
+    "model": "XING2 1404 4600KV",
+    "kv_rpm_per_v": 4600.0,
+    "input_cells": [3, 4],
+    "interphase_resistance_ohm": 0.159,
+    "effective_resistance_sensitivity_ohm": [0.0795, 0.159],
+    "effective_resistance_note": "The source gives interphase resistance. PyThrust's effective winding-resistance convention is not confirmed for this measurement; 0.5x and 1.0x are sensitivity cases only.",
+    "no_load_current_a": null,
+    "peak_current_a": 17.99,
+    "sustained_current_limit_a": null,
+    "max_reported_test_power_w": 287.8,
+    "test_voltage_v": 16.0,
+    "test_temperature_c": 55.0,
+    "winding_temperature_limit_c": null,
+    "esc_specification": null,
+    "battery_model_or_resistance": null,
+    "test_duration_s": null
+  },
+  "source": {
+    "datasheet_url": "https://iflight-public.oss-cn-hongkong.aliyuncs.com/Support/lnstructions/XING2-MOTOR/XING2-1404-4600KV-EN.pdf",
+    "datasheet_sha256": "945B3A5A3DB1421C68F8DD98CC386B5F0BF17FD942F933C422296710695F35ED",
+    "manufacturer_product_url": "https://iflight-rc.eu/en-cy/products/xing2-1404-toothpick-ultralight-motor-unibell",
+    "scope": "The 55 C value is a test observation, not a thermal rating. The 17.99 A and 287.8 W values are reported maxima from the 16 V static test, not continuous limits. The datasheet does not state no-load current, sustained limits, ESC, battery resistance, or test duration."
+  }
+}
