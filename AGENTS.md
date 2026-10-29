@@ -26,7 +26,6 @@ No commands detected. Check project documentation for build/run instructions.
 
 **Ask first:**
 - Adding new dependencies
-- Changing project configuration files
 
 **Never:**
 - Commit secrets, API keys, or .env files

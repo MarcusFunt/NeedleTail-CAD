@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "holdouts": {
+    "graupner_cam_9x4": {
+      "manufacturer_family": "Graupner CAM Prop",
+      "propeller": "9 x 4 in",
+      "source_page_url": "https://m-selig.web.engr.illinois.edu/props/volume-1/propDB-volume-1.html",
+      "source_dataset": "UIUC Propeller Database, Volume 1, Graupner CAM Prop",
+      "retrieved_utc": "2026-10-29T17:31:20Z",
+      "diameter_m": 0.2286,
+      "diameter_basis": "Nominal 9 in from the UIUC propeller entry; not independently measured.",
+      "blade_count": 2,
+      "validation_role": "family-level procedural holdout; excluded from the supplied 195-row frozen regression set and never used for coefficient fitting",
+      "blinding": "not a fully blind experiment: public data values were visible during source discovery, before model runs; do not use for fitting",
+      "redistribution_status": "No explicit data redistribution license was established. Raw files and per-point run artifacts remain local and are not committed.",
+      "sources": {
+        "geometry": {
+          "filename": "grcp_9x4_geom.txt",
+          "url": "https://m-selig.web.engr.illinois.edu/props/volume-1/data/grcp_9x4_geom.txt",
+          "sha256": "a0af0d9140dd3c9e940ea771932fb6bb3490daed5aa7663044715daf03cb5e4c",
+          "size_bytes": 393,
+          "data_type": "digitized blade geometry"
+        },
+        "static": {
+          "filename": "grcp_9x4_static_rd0923.txt",
+          "url": "https://m-selig.web.engr.illinois.edu/props/volume-1/data/grcp_9x4_static_rd0923.txt",
+          "sha256": "6d72eefc16746721d0e308304ce2cbca21e40e98f8571f4c9bcc00adfa4abef0",
+          "size_bytes": 387,
+          "data_type": "static wind-tunnel performance"
+        },
+        "forward_4015rpm": {
+          "filename": "grcp_9x4_rd0924_4015.txt",
+          "url": "https://m-selig.web.engr.illinois.edu/props/volume-1/data/grcp_9x4_rd0924_4015.txt",
+          "sha256": "c2f308c1067200fc1b1213e4913dd19b1942935d59d7741dbfd23adadbd1ba4f",
+          "size_bytes": 420,
+          "rpm": 4015,
+          "data_type": "forward-flight wind-tunnel performance"
+        },
+        "forward_5009rpm": {
+          "filename": "grcp_9x4_rd0925_5009.txt",
+          "url": "https://m-selig.web.engr.illinois.edu/props/volume-1/data/grcp_9x4_rd0925_5009.txt",
+          "sha256": "efd81730cb7ae7845abd6d62f7cc834cdc363b50d9493bac95ed56146c264505",
+          "size_bytes": 514,
+          "rpm": 5009,
+          "data_type": "forward-flight wind-tunnel performance"
+        }
+      }
+    }
+  }
+}

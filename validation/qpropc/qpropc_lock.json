@@ -1,0 +1,16 @@
+{
+  "project": "pavanandrea/qprop.c",
+  "license": "MIT",
+  "source_ref": "2603",
+  "source_commit": "caacc6623a3b3596c9d59ff361ed647db40508a8",
+  "source_url": "https://github.com/pavanandrea/qprop.c",
+  "release_url": "https://github.com/pavanandrea/qprop.c/releases/download/2603/qprop-portable-2603.zip",
+  "portable_archive": "qprop-portable-2603.zip",
+  "portable_sha256": "aa9e79fd9cc4cc6051bf5d134e8436edfb3c52e7f9e4fe27f2788962a071ae0a",
+  "python_binding": "qprop.py",
+  "supported_release_assets": [
+    "qprop-lib-windows-x64.dll",
+    "qprop-lib-linux-x64.so",
+    "qprop-lib-macos-arm64.dylib"
+  ]
+}
